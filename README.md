@@ -19,7 +19,7 @@ Clients speak ordinary S3. The storage provider only ever sees ciphertext — ne
   as <code>make demo</code>.
 </sub></p>
 
-> **Status: `v0.5.0` — usable, and M7 is under way.** Standard S3 clients round-trip
+> **Status: `v0.6.0` — usable, and measured against AWS.** Standard S3 clients round-trip
 > through the gateway, multipart included: AWS CLI, boto3, `mc` and rclone all
 > work, and a 5 GiB `aws s3 cp` across two instances comes back with an identical
 > SHA-256. Key rotation, server-side copy, a signed audit log, object-name
@@ -31,14 +31,16 @@ Clients speak ordinary S3. The storage provider only ever sees ciphertext — ne
 > [what it does and does not promise](docs/THREAT_MODEL.md) first. **Presigned
 > URLs** are verified, for reads only.
 >
-> This release is the first measured against a provider other than MinIO. The
-> integration suite now runs against **Garage** in CI too, and its first run
-> there found that Garage ignores the condition `blindbucket rotate` relies on to
-> never overwrite a client's write. So a rotation now measures the provider's
-> conditional writes before it starts, and refuses where they are not enforced
-> ([ADR-020](docs/adr/ADR-020-conditional-writes-measured.md)). See
-> [Roadmap](#roadmap), [CHANGELOG.md](CHANGELOG.md) and
-> [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
+> The integration suite runs against three providers: MinIO and **Garage** on
+> every change, and **AWS S3 and KMS** on demand, where all 238 tests pass. Garage
+> ignores the condition `blindbucket rotate` relies on to never overwrite a
+> client's write, so a rotation measures the provider's conditional writes before
+> it starts and refuses where they are not enforced
+> ([ADR-020](docs/adr/ADR-020-conditional-writes-measured.md)) — `blindbucket
+> probe` asks the same question without rotating. `gc` and `rotate` report as
+> JSON, and what 1.0 will promise is written down in
+> [ADR-021](docs/adr/ADR-021-what-1.0-promises.md). See [Roadmap](#roadmap),
+> [CHANGELOG.md](CHANGELOG.md) and [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
 ---
 
@@ -149,7 +151,7 @@ in **[docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)**.
 
 ```sh
 # Container: distroless, nonroot, no shell, 21 MB.
-docker pull ghcr.io/lennardgeissler/blindbucket:0.5.0
+docker pull ghcr.io/lennardgeissler/blindbucket:0.6.0
 
 # Or a binary, with checksums and an SBOM alongside it:
 #   https://github.com/LennardGeissler/blindbucket/releases
@@ -507,7 +509,8 @@ the gateway already costs per request.
 | — | Vault Transit and AWS KMS as root-key sources, deferred from M5 | **done** |
 | — | Cryptographically verifiable audit log, hash-chained and signed | **done** |
 | M6 | Stretch: name encryption, presigned URLs, rollback protection | **done** |
-| M7 | The suite against providers other than MinIO: provider profiles, Garage, measured conditional writes | in progress |
+| M7 | The suite against providers other than MinIO: provider profiles, Garage, measured conditional writes | **done** |
+| M8 | Measured against real providers: AWS S3 and KMS done; R2 and B2 not yet | in progress |
 
 M4 is the point the project becomes worth showing: multipart is what "works with real S3
 clients" actually means for anything over 8 MiB. M3.5 existed to get its coordination rules

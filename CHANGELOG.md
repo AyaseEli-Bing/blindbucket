@@ -12,6 +12,8 @@ version 1 would keep being readable.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-09-27
+
 ### Added
 
 **Build information in metrics and the startup log.**

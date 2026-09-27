@@ -1,9 +1,10 @@
 # Threat Model
 
-**Status:** Current as of `v0.5.0`, which changed no guarantee in it: its one
-security-relevant change, rotation refusing a provider that ignores conditional
-writes, protects client writes against a provider bug rather than an adversary
-([ADR-020](adr/ADR-020-conditional-writes-measured.md)). `v0.4.0` was the release
+**Status:** Current as of `v0.6.0`, which changed no guarantee in it: it adds
+reporting and measurement, not a mechanism. `v0.5.0` did not change one either:
+its security-relevant change, rotation refusing a provider that ignores
+conditional writes, protects client writes against a provider bug rather than
+an adversary ([ADR-020](adr/ADR-020-conditional-writes-measured.md)). `v0.4.0` was the release
 in which the risk table below stopped having a row that says **No** while
 promising a mitigation. Rollback —
 a provider serving an older but genuine version of an object — is detectable
