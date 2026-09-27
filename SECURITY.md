@@ -59,16 +59,19 @@ unless you ask otherwise.
 
 ## Supported versions
 
-The wire format is the thing held stable before `1.0.0`; the Go API is not.
-Security fixes land on `main` and in a new patch release of the most recent
-minor version. Older minors are not backported — for a project maintained by
-one person, a backport policy would be ceremony rather than a service.
+What stays stable from `1.0.0` on is written down in
+[ADR-021](docs/adr/ADR-021-what-1.0-promises.md). Security fixes land on `main`
+and in a new patch release of the most recent minor version. Older minors of the
+same major are not backported — for a project maintained by one person, a
+backport policy would be ceremony rather than a service. When a new major is
+released, the last minor of the previous one keeps receiving security fixes for
+six months. The 0.x releases predate that promise and are not covered by it.
 
 | Version | Supported |
 |---|---|
 | `main` | yes |
-| 0.6.x | yes |
-| 0.5.x and older | no — upgrade to 0.6.x |
+| 1.0.x | yes |
+| 0.6.x and older | no — upgrade to 1.0.x; everything they wrote stays readable |
 
 Objects written by any released version stay readable: a change to the segment
 format would be a change to its version number, announced in the changelog.

@@ -1,7 +1,10 @@
 # Threat Model
 
-**Status:** Current as of `v0.6.0`, which changed no guarantee in it: it adds
-reporting and measurement, not a mechanism. `v0.5.0` did not change one either:
+**Status:** Current as of `v1.0.0`, which changed no guarantee in it: it makes
+the existing ones a versioned promise ([ADR-021](adr/ADR-021-what-1.0-promises.md)),
+and its one fix lets the root-key credentials be referenced from the environment
+instead of written into the configuration file. `v0.6.0` added reporting and
+measurement, not a mechanism. `v0.5.0` did not change one either:
 its security-relevant change, rotation refusing a provider that ignores
 conditional writes, protects client writes against a provider bug rather than
 an adversary ([ADR-020](adr/ADR-020-conditional-writes-measured.md)). `v0.4.0` was the release

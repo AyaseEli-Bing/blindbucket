@@ -1,9 +1,9 @@
 # ADR-021 — What 1.0 promises, and what it does not
 
-**Status:** Proposed — becomes Accepted with the `v1.0.0` release, which is when it takes effect
+**Status:** Accepted — took effect with `v1.0.0`, 2026-09-27
 **Date:** 2026-09-26
 **Milestone:** M10
-**Implements:** nothing yet; it constrains every release from `v1.0.0` on
+**Implements:** the upgrade test, the `--json` field-set tests, `TestMetricsAreAContract`, FORMAT §16; it constrains every release from `v1.0.0` on
 
 ## Context
 
@@ -94,8 +94,7 @@ fact long before it was in the table.
 - **The JSON documents** of `keys list`, `gc`, `rotate` and `probe`. A field is
   never removed, renamed, or given a different type or meaning. New fields may
   be added in a minor release, so **a consumer must ignore fields it does not
-  know** — which each command's help is to say before 1.0, since today none
-  does. Times stay RFC 3339 in UTC and
+  know**, which each command's help says. Times stay RFC 3339 in UTC and
   durations stay seconds.
 - **Metrics.** The names, their types, and their label names. New metrics and
   new label *values* may appear; a label name is never added to an existing
@@ -181,9 +180,9 @@ a version number is for here.
 - The six-month window for a previous major is a commitment a project run by
   one person has to be able to keep.
 
-**Before `v1.0.0`**, then: FORMAT §16 marks format `1` stable, and this ADR is
-Accepted — both in the release commit itself. The other three items that were
-on this list are done: each `--json` command's help says to ignore unknown
+**Before `v1.0.0`**, five things were to be done, and were: FORMAT §16 marks
+format `1` stable and this ADR is Accepted, both in the release commit itself;
+and before it, each `--json` command's help says to ignore unknown
 fields, `internal/obs` pins every metric's name, type and label names
 (`TestMetricsAreAContract`), and every release carries the known-answer
 vectors, named by the format version they pin and listed in `checksums.txt`.

@@ -906,7 +906,7 @@ go test ./internal/crypto/names -run TestKnownAnswerVectors -update
 
 | Format version | Status | Change |
 |---|---|---|
-| `1` | draft | Initial specification. |
+| `1` | stable since `v1.0.0` | Initial specification. Written by every release since `v0.1.0`; read by every later one ([ADR-021](adr/ADR-021-what-1.0-promises.md)). |
 
 The object name mapping of section 15 is versioned with the object format above:
 it decides where an object is, so a reader that cannot reproduce it cannot reach

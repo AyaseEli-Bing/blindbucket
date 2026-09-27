@@ -19,7 +19,7 @@ Clients speak ordinary S3. The storage provider only ever sees ciphertext — ne
   as <code>make demo</code>.
 </sub></p>
 
-> **Status: `v0.6.0` — usable, and measured against AWS.** Standard S3 clients round-trip
+> **Status: `v1.0.0` — stable, and measured against AWS.** Standard S3 clients round-trip
 > through the gateway, multipart included: AWS CLI, boto3, `mc` and rclone all
 > work, and a 5 GiB `aws s3 cp` across two instances comes back with an identical
 > SHA-256. Key rotation, server-side copy, a signed audit log, object-name
@@ -38,9 +38,14 @@ Clients speak ordinary S3. The storage provider only ever sees ciphertext — ne
 > client's write, so a rotation measures the provider's conditional writes before
 > it starts and refuses where they are not enforced
 > ([ADR-020](docs/adr/ADR-020-conditional-writes-measured.md)) — `blindbucket
-> probe` asks the same question without rotating. `gc` and `rotate` report as
-> JSON, and what 1.0 will promise is written down in
-> [ADR-021](docs/adr/ADR-021-what-1.0-promises.md). See [Roadmap](#roadmap),
+> probe` asks the same question without rotating.
+>
+> **What 1.0 promises** is written down in
+> [ADR-021](docs/adr/ADR-021-what-1.0-promises.md): every object any release
+> wrote stays readable by every later one, and configuration, CLI, `--json`
+> documents and metrics change incompatibly only in a major release. The formats,
+> the `--json` field sets and the metrics are pinned by tests, not by review. See
+> [Roadmap](#roadmap),
 > [CHANGELOG.md](CHANGELOG.md) and [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md).
 
 ---
@@ -152,7 +157,7 @@ in **[docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)**.
 
 ```sh
 # Container: distroless, nonroot, no shell, 21 MB.
-docker pull ghcr.io/lennardgeissler/blindbucket:0.6.0
+docker pull ghcr.io/lennardgeissler/blindbucket:1.0.0
 
 # Or a binary, with checksums and an SBOM alongside it:
 #   https://github.com/LennardGeissler/blindbucket/releases
@@ -512,6 +517,8 @@ the gateway already costs per request.
 | M6 | Stretch: name encryption, presigned URLs, rollback protection | **done** |
 | M7 | The suite against providers other than MinIO: provider profiles, Garage, measured conditional writes | **done** |
 | M8 | Measured against real providers: AWS S3 and KMS done; R2 and B2 not yet | in progress |
+| M9 | Benchmarks over a real network, gateway and bucket in one region | not started |
+| M10 | 1.0: the stability promise (ADR-021), an upgrade test over every release, test vectors on every release | **done** |
 
 M4 is the point the project becomes worth showing: multipart is what "works with real S3
 clients" actually means for anything over 8 MiB. M3.5 existed to get its coordination rules

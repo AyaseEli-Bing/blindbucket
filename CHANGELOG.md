@@ -1,9 +1,13 @@
 # Changelog
 
 Notable changes per release. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and versions follow [semantic versioning](https://semver.org/spec/v2.0.0.html) —
-with the caveat that before `1.0.0` the wire format is the thing held stable, not
-the Go API.
+and versions follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
+What the version number is about is written down in
+[ADR-021](docs/adr/ADR-021-what-1.0-promises.md): data at rest stays readable by
+every later release; configuration, CLI, `--json` documents, metrics, admin
+endpoints and the gateway's own S3 error codes change incompatibly only in a
+major release; the Go API, log lines and human-readable output are not promised.
+Before `1.0.0` only the wire format was held stable.
 
 The **wire format** is versioned separately and independently: the segment format
 is version `1` and is specified in [docs/FORMAT.md](docs/FORMAT.md). A change to
@@ -11,6 +15,34 @@ it would be a change to that number, announced here, and objects written under
 version 1 would keep being readable.
 
 ## [Unreleased]
+
+## [1.0.0] — 2026-09-27
+
+The release that says what it promises. Nothing in the format changes: format
+`1` has been written by every release since `v0.1.0`, and what `1.0.0` adds is
+that this is now a commitment rather than a habit.
+
+### Changed
+
+**The stability promise of [ADR-021](docs/adr/ADR-021-what-1.0-promises.md)
+takes effect.** Three tiers. Data at rest — segments, manifests, upload tokens,
+the name mapping, the audit log, the keyring and the freshness index — is read
+by every later release, and a 1.x release writes a new format only when the
+configuration asks for it, so two 1.x versions in a rolling upgrade read each
+other's writes. Configuration keys, CLI commands, flags and exit codes, the
+`--json` documents, metric names, types and labels, `/healthz`, `/readyz` and
+`/metrics`, and `IntegrityCheckFailed`, `RollbackDetected` and
+`ObjectNotEncrypted` change incompatibly only in a major release; a consumer of
+`--json` ignores fields it does not know. The Go API, log lines and text output
+are not promised. The data at rest, the `--json` field sets and the metrics are
+pinned by tests: the upgrade test, the field-set tests, `TestMetricsAreAContract`.
+
+**Format `1` is stable** in [docs/FORMAT.md](docs/FORMAT.md) §16, no longer a
+draft.
+
+**Supported versions** in [SECURITY.md](SECURITY.md): the latest 1.x minor.
+From 2.0 on, the last minor of the previous major keeps receiving security
+fixes for six months.
 
 ### Measured
 
@@ -26,8 +58,9 @@ whose upstream is the real bucket, and restarts it to open the keyring again
 `session_token` now resolve a `${VAR}` reference like the upstream and client
 credentials do. Before, only those were resolved: the Vault token and the KMS
 credentials had to be written into the file, and the `${VAULT_TOKEN}` that
-`blindbucket.example.yaml` shows was sent to Vault as the literal string. The example's `${VAULT_ADDR}` was never
-resolved either, and an address is not a secret, so it is now written out.
+`blindbucket.example.yaml` shows was sent to Vault as the literal string. The
+example's `${VAULT_ADDR}` was never resolved either, and an address is not a
+secret, so it is now written out.
 
 ## [0.6.0] — 2026-09-27
 
@@ -746,7 +779,10 @@ figures and the methodology are in [bench/](bench/).
   of ten seconds, so the time is the provider's; why it behaves that way under
   this access pattern is not established.
 
-[Unreleased]: https://github.com/LennardGeissler/blindbucket/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/LennardGeissler/blindbucket/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/LennardGeissler/blindbucket/compare/v0.6.0...v1.0.0
+[0.6.0]: https://github.com/LennardGeissler/blindbucket/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/LennardGeissler/blindbucket/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/LennardGeissler/blindbucket/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/LennardGeissler/blindbucket/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/LennardGeissler/blindbucket/compare/v0.1.0...v0.2.0
