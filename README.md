@@ -142,13 +142,15 @@ must run in the same trust domain as its clients (sidecar, or behind TLS on an i
 network). Anyone who controls the proxy host or the KEK has everything.
 
 Metadata is **not** hidden: object names, exact sizes, timestamps and access patterns remain
-visible to the provider. Object names are the one item on that list being worked on —
-`names.encrypt` hides them, but it is off by default, serves only single-object operations
-so far, and "encrypted" there means *confirmable by guessing* rather than unguessable. The
-limits are written out in [THREAT_MODEL.md](docs/THREAT_MODEL.md) section 4, and they are
-the point rather than a footnote. Rollback to an older genuine version of an object is not
-currently detectable — and the [audit log](#the-audit-log), despite the name, does not
-change that.
+visible to the provider. Object names are the one exception on offer —
+`names.encrypt` hides them, but it is off by default, a listing under it is bounded by
+`names.max_listing_keys`, and "encrypted" there means *confirmable by guessing* rather than
+unguessable. The limits are written out in [THREAT_MODEL.md](docs/THREAT_MODEL.md)
+section 4, and they are the point rather than a footnote. Rollback to an older genuine
+version of an object is detectable only with `freshness.index` switched on, and even then
+the first read of any object is trusted
+([ADR-018](docs/adr/ADR-018-rollback-detection.md)) — and the
+[audit log](#the-audit-log), despite the name, does not change that.
 
 These are stated up front on purpose. The full analysis, including every residual risk, is
 in **[docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)**.

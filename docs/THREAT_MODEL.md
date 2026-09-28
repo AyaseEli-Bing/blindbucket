@@ -121,9 +121,10 @@ read before it is switched on.
 **Object names can be encrypted, and "encrypted" here does not mean "unguessable."**
 `names.encrypt` stores each object under the deterministic per-segment encryption of
 [ADR-015](adr/ADR-015-object-name-encryption.md), so the provider no longer sees the key a
-client used. It is off by default and, at present, serves only the four single-object
-operations; listing, multipart and copy are refused rather than served wrongly
-([ADR-017](adr/ADR-017-listing-order-under-name-encryption.md)).
+client used. It is off by default and covers every operation the gateway serves. A
+listing is read whole and sorted before any of it is returned, so a prefix beyond
+`names.max_listing_keys` is refused rather than answered in an order that can make a
+client delete data ([ADR-017](adr/ADR-017-listing-order-under-name-encryption.md)).
 
 What it does *not* hide is the part that matters most, and it follows from the one
 requirement the design could not give up — a point lookup must reach one object in one
