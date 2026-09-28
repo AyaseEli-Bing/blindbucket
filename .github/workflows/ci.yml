@@ -209,7 +209,7 @@ jobs:
       - name: Coverage floor
         id: coverage
         env:
-          COVERAGE_MIN: "78"
+          COVERAGE_MIN: "82"
         run: |
           total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')
           echo "total=$total" >> "$GITHUB_OUTPUT"

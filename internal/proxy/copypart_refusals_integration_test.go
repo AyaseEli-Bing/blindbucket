@@ -147,3 +147,76 @@ func TestIntegrationUploadPartCopyIntoAnEndedUpload(t *testing.T) {
 		}
 	})
 }
+
+// TestIntegrationUploadPartCopySourceEdges covers the source shapes the happy
+// paths do not: a multipart source that fails authentication or is asked for a
+// range past its end, a single-part source whose range starts mid-object so its
+// header is fetched on its own -- and checked on its own -- and an empty one.
+func TestIntegrationUploadPartCopySourceEdges(t *testing.T) {
+	h := newHarness(t)
+	flipAt := func(offset int) func([]byte) []byte {
+		return func(stored []byte) []byte {
+			modified := append([]byte(nil), stored...)
+			modified[offset] ^= 0x01
+			return modified
+		}
+	}
+
+	t.Run("a tampered multipart source", func(t *testing.T) {
+		src := testKey(t, "mpu-src.bin")
+		h.mpuStore(t, src, [][]byte{randomBytes(t, testPart), randomBytes(t, 50_000)})
+		h.rewriteUpstream(t, src, flipAt(10)) // inside the first part's header
+
+		dst := testKey(t, "dst.bin")
+		resp := h.mpuPartCopy(t, dst, h.mpuStart(t, dst, nil), 1, src, "")
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode == http.StatusOK {
+			t.Fatal("a multipart source that failed authentication was copied")
+		}
+	})
+
+	t.Run("a tampered header under a mid-object range", func(t *testing.T) {
+		src := testKey(t, "src.bin")
+		h.store(t, src, randomBytes(t, 300_000))
+		h.rewriteUpstream(t, src, flipAt(10))
+
+		dst := testKey(t, "dst.bin")
+		resp := h.mpuPartCopy(t, dst, h.mpuStart(t, dst, nil), 1, src, "bytes=200000-299999")
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode == http.StatusOK {
+			t.Fatal("a range was copied from a source whose header failed authentication")
+		}
+	})
+
+	t.Run("a range past the end of a multipart source", func(t *testing.T) {
+		src := testKey(t, "mpu-src.bin")
+		h.mpuStore(t, src, [][]byte{randomBytes(t, testPart), randomBytes(t, 1000)})
+
+		dst := testKey(t, "dst.bin")
+		resp := h.mpuPartCopy(t, dst, h.mpuStart(t, dst, nil), 1, src,
+			fmt.Sprintf("bytes=%d-%d", testPart*3, testPart*3+10))
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusRequestedRangeNotSatisfiable {
+			t.Errorf("returned %d, want 416: %s", resp.StatusCode, readBody(t, resp))
+		}
+	})
+
+	// An empty part is accepted when copied and refused at completion, because
+	// the format has no empty last part (FORMAT §7.3). What matters is that the
+	// refusal is a clean one and publishes nothing.
+	t.Run("an empty source", func(t *testing.T) {
+		src := testKey(t, "empty.bin")
+		h.store(t, src, nil)
+
+		dst := testKey(t, "dst.bin")
+		token := h.mpuStart(t, dst, nil)
+		etag := h.copyPartETag(t, dst, token, 1, src, "")
+		resp := h.mpuComplete(t, dst, token, []completeReqPart{{PartNumber: 1, ETag: etag}})
+		defer func() { _ = resp.Body.Close() }()
+		if body := readBody(t, resp); resp.StatusCode != http.StatusBadRequest ||
+			!strings.Contains(body, "the last part is empty") {
+			t.Errorf("returned %d: %s", resp.StatusCode, body)
+		}
+		h.absentUpstream(t, dst)
+	})
+}

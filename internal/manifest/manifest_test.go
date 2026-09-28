@@ -234,3 +234,36 @@ func TestObjectKeyStaysWithinTheKeyLimit(t *testing.T) {
 		t.Error("ObjectKey and PrefixFor disagree")
 	}
 }
+
+// TestPeekIdentityOnUntrustedInput: PeekIdentity parses without the data key,
+// for gc, on whatever the provider returns under the reserved prefix. Every
+// truncation of a real manifest has to come back as an error -- not a panic,
+// and not an identity read from half a length prefix.
+func TestPeekIdentityOnUntrustedInput(t *testing.T) {
+	m, dek := sample(t)
+	raw, err := m.Marshal(dek)
+	if err != nil {
+		t.Fatalf("Marshal: %v", err)
+	}
+
+	bucket, key, id, err := PeekIdentity(raw)
+	if err != nil || bucket != m.Bucket || key != m.Key || id != m.ID {
+		t.Fatalf("a whole manifest peeked as %q %q %v, %v", bucket, key, id, err)
+	}
+
+	// The MAC is the last MACSize bytes and is not checked here, so cutting the
+	// body short is cutting what the parser reads.
+	for n := range len(raw) - MACSize {
+		body := append(append([]byte{}, raw[:n]...), raw[len(raw)-MACSize:]...)
+		if _, _, _, err := PeekIdentity(body); err == nil {
+			t.Fatalf("a manifest cut to %d of %d body bytes was accepted", n, len(raw)-MACSize)
+		}
+	}
+
+	// Trailing bytes after the last part are refused too: a parser that stopped
+	// early would let a forger append fields it never reads.
+	extended := append(append(append([]byte{}, raw[:len(raw)-MACSize]...), 0xff), raw[len(raw)-MACSize:]...)
+	if _, _, _, err := PeekIdentity(extended); err == nil {
+		t.Error("a manifest with trailing bytes was accepted")
+	}
+}

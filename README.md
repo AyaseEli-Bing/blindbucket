@@ -740,9 +740,9 @@ python3 test/integration/clients/boto3/scenarios.py
 ```
 
 The coverage badge counts production code only, with MinIO, Vault and the KMS
-emulator running so that the tests which need them run too: about 80 %. The test
+emulator running so that the tests which need them run too: about 84 %. The test
 helpers under `internal/testprovider` and `test/` are not counted, and neither are
-the Python client tests or the TLA+ model. CI fails below 78 %. It is measured
+the Python client tests or the TLA+ model. CI fails below 82 %. It is measured
 with Go 1.24, the declared floor; Go 1.27 splits the same code into blocks
 differently and reports a few points more for the same tests.
 
