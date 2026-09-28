@@ -30,7 +30,7 @@ ADR-021, which promtool's own tests cannot do.
 
 **Coverage, measured and held.** The MinIO integration job now runs every
 package with `-coverpkg=./...`, writes the total to the job summary and fails
-below 72 % (measured: 73.6 %). A push to `main` publishes it as the README's
+below 69 % (measured: 70.9 % with Go 1.24, the declared floor). A push to `main` publishes it as the README's
 badge through a `badges` branch that holds one commit. `make cover` measures
 across packages the same way.
 

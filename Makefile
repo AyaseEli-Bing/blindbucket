@@ -45,7 +45,8 @@ test: ## Run race-enabled Go tests.
 
 .PHONY: cover
 # Without BLINDBUCKET_TEST_S3_ENDPOINT the proxy's tests skip and the total is
-# about 42 %; CI measures with MinIO, where it is about 74 %.
+# about 43 %; CI measures with MinIO and Go 1.24, where it is about 71 %. Newer
+# toolchains count blocks differently and report a few points more.
 cover: ## Run tests and report coverage across packages.
 	$(GO) test -race -count=1 -coverpkg=$(PKG) -coverprofile=coverage.out $(PKG)
 	$(GO) tool cover -func=coverage.out | tail -n 1

@@ -676,8 +676,10 @@ python3 test/integration/clients/boto3/scenarios.py
 ```
 
 The coverage badge is measured with MinIO running, across every package: about
-74 %, where the unit tests alone reach about 42 % because the proxy's tests need a
-provider. CI fails below 72 %. The Vault and KMS paths are tested in a job of their
+71 %, where the unit tests alone reach about 43 % because the proxy's tests need a
+provider. CI fails below 69 %. It is measured with Go 1.24, the declared floor;
+Go 1.27 splits the same code into blocks differently and reports 73.6 % for the
+same tests. The Vault and KMS paths are tested in a job of their
 own and not counted, and neither are the Python client tests or the TLA+ model.
 
 Production code is Go, without exception. Anything else in this repository — the Python
