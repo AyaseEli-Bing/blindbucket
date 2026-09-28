@@ -28,11 +28,14 @@ gateway, a 5xx rate over 5 % and a key-encryption key older than a year.
 runs it. A Go test holds every metric the rules name to the metric contract of
 ADR-021, which promtool's own tests cannot do.
 
-**Coverage, measured and held.** The MinIO integration job now runs every
-package with `-coverpkg=./...`, writes the total to the job summary and fails
-below 69 % (measured: 70.9 % with Go 1.24, the declared floor). A push to `main` publishes it as the README's
-badge through a `badges` branch that holds one commit. `make cover` measures
-across packages the same way.
+**Coverage, measured and held.** The MinIO integration job now measures
+statement coverage of the production code, with Vault and the KMS emulator up
+so that the root-key tests count too, writes the total to the job summary and
+fails below 78 %. Measured with Go 1.24, the declared floor: 70.9 % when first
+measured, 77.0 % with tests for the audit CLI, `serve` and `keygen`, and 80.3 %
+once test helpers left the denominator and the root-key tests were counted. A
+push to `main` publishes it as the README's badge through a `badges` branch that
+holds one commit. `make cover` measures the same way.
 
 **A Helm chart.** `deploy/helm/blindbucket` runs the gateway as a shared service
 other pods reach over the network. That shape puts plaintext on the wire, so the

@@ -739,12 +739,12 @@ BLINDBUCKET_TEST_KMS_ENDPOINT=http://127.0.0.1:4599 go test ./internal/rootkey
 python3 test/integration/clients/boto3/scenarios.py
 ```
 
-The coverage badge is measured with MinIO running, across every package: about
-71 %, where the unit tests alone reach about 43 % because the proxy's tests need a
-provider. CI fails below 69 %. It is measured with Go 1.24, the declared floor;
-Go 1.27 splits the same code into blocks differently and reports 73.6 % for the
-same tests. The Vault and KMS paths are tested in a job of their
-own and not counted, and neither are the Python client tests or the TLA+ model.
+The coverage badge counts production code only, with MinIO, Vault and the KMS
+emulator running so that the tests which need them run too: about 80 %. The test
+helpers under `internal/testprovider` and `test/` are not counted, and neither are
+the Python client tests or the TLA+ model. CI fails below 78 %. It is measured
+with Go 1.24, the declared floor; Go 1.27 splits the same code into blocks
+differently and reports a few points more for the same tests.
 
 Production code is Go, without exception. Anything else in this repository — the Python
 client tests, the TLA+ model — has a written reason in

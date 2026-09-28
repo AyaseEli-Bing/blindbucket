@@ -49,11 +49,13 @@ test: ## Run race-enabled Go tests.
 	$(GO) test -race -count=1 $(PKG)
 
 .PHONY: cover
-# Without BLINDBUCKET_TEST_S3_ENDPOINT the proxy's tests skip and the total is
-# about 43 %; CI measures with MinIO and Go 1.24, where it is about 71 %. Newer
-# toolchains count blocks differently and report a few points more.
-cover: ## Run tests and report coverage across packages.
-	$(GO) test -race -count=1 -coverpkg=$(PKG) -coverprofile=coverage.out $(PKG)
+# Production code only: the test helpers are left out of the count. CI runs this
+# with MinIO, Vault and the KMS emulator up (docker compose --profile keys) and
+# Go 1.24; without them their tests skip and the total drops. Newer toolchains
+# count blocks differently and report a few points more.
+COVERPKG = $(shell $(GO) list $(PKG) | grep -v -e /internal/testprovider -e /test/ | paste -sd, -)
+cover: ## Run tests and report coverage of production code.
+	$(GO) test -race -count=1 -coverpkg=$(COVERPKG) -coverprofile=coverage.out $(PKG)
 	$(GO) tool cover -func=coverage.out | tail -n 1
 
 ##@ Fuzz and benchmarks
