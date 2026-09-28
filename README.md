@@ -135,6 +135,15 @@ A gateway centralises encryption at one point inside your own trust boundary. Ap
 stay unchanged, and the security level does not depend on every team configuring a library
 correctly.
 
+Other gateways exist, and they make different trades. Read against their source on
+2026-09-28:
+
+| Gateway | Where it differs |
+|---|---|
+| [cloud37/s3-encryption-gateway](https://github.com/cloud37/s3-encryption-gateway) | The closest design: chunked AEAD, KMIP and Vault Transit, fuzzing and mutation testing in CI. Encrypted multipart needs a Valkey state store and buffers each part in memory (64 MiB by default), and object names reach the provider as the client sent them |
+| [Intrinsec/s3proxy](https://github.com/Intrinsec/s3proxy) | Encrypts each object whole, in memory. Multipart is off by default and, when switched on, is forwarded unencrypted. One key-encryption key, no rotation |
+| [gaul/s3proxy](https://github.com/gaul/s3proxy) encrypted blob store | AES-CFB without authentication, so stored ciphertext can be altered without detection. One 128-bit key derived from a password |
+
 ## Security posture
 
 The trust boundary is the proxy. Between client and proxy, data is plaintext — so the proxy
