@@ -1,0 +1,81 @@
+{{- include "blindbucket.validate" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "blindbucket.fullname" . }}
+  labels:
+    {{- include "blindbucket.labels" . | nindent 4 }}
+data:
+  # Every secret is a ${VAR} reference, resolved by the gateway from the
+  # container's environment; a missing one stops the start instead of leaving
+  # an empty credential. Nothing in this ConfigMap is secret.
+  blindbucket.yaml: |
+    server:
+      listen: "0.0.0.0:9000"
+      tls:
+        cert_file: /etc/blindbucket/tls/tls.crt
+        key_file: /etc/blindbucket/tls/tls.key
+      presign:
+        enabled: {{ .Values.server.presign.enabled }}
+        max_expiry: {{ .Values.server.presign.maxExpiry | quote }}
+
+    admin:
+      listen: "0.0.0.0:9100"
+      pprof: false
+
+    upstream:
+      endpoint: {{ .Values.upstream.endpoint | quote }}
+      region: {{ .Values.upstream.region | quote }}
+      path_style: {{ .Values.upstream.pathStyle }}
+      access_key_id: ${UPSTREAM_ACCESS_KEY_ID}
+      secret_access_key: ${UPSTREAM_SECRET_ACCESS_KEY}
+      {{- if .Values.upstream.sessionToken }}
+      session_token: ${UPSTREAM_SESSION_TOKEN}
+      {{- end }}
+
+    keys:
+      provider: {{ .Values.keys.provider }}
+      keyring: /etc/blindbucket/keys/keyring.json
+      {{- if eq .Values.keys.provider "file" }}
+      passphrase_file: /etc/blindbucket/passphrase/passphrase
+      {{- else if eq .Values.keys.provider "vault" }}
+      vault:
+        address: {{ .Values.keys.vault.address | quote }}
+        token: ${VAULT_TOKEN}
+        mount: {{ .Values.keys.vault.mount | quote }}
+        key_name: {{ .Values.keys.vault.keyName | quote }}
+        namespace: {{ .Values.keys.vault.namespace | quote }}
+      {{- else if eq .Values.keys.provider "awskms" }}
+      awskms:
+        region: {{ .Values.keys.awskms.region | quote }}
+        key_id: {{ .Values.keys.awskms.keyId | quote }}
+        access_key_id: ${KMS_ACCESS_KEY_ID}
+        secret_access_key: ${KMS_SECRET_ACCESS_KEY}
+        {{- if .Values.keys.awskms.sessionToken }}
+        session_token: ${KMS_SESSION_TOKEN}
+        {{- end }}
+        endpoint: {{ .Values.keys.awskms.endpoint | quote }}
+        {{- with .Values.keys.awskms.encryptionContext }}
+        encryption_context:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+      {{- end }}
+
+    crypto:
+      log2_chunk_size: {{ .Values.crypto.log2ChunkSize }}
+
+    {{- if .Values.names.encrypt }}
+
+    names:
+      encrypt: true
+      max_listing_keys: {{ .Values.names.maxListingKeys | int }}
+      max_concurrent_listings: {{ .Values.names.maxConcurrentListings | int }}
+    {{- end }}
+
+    clients:
+    {{- range $i, $c := .Values.clients }}
+      - name: {{ $c.name | quote }}
+        access_key_id: ${CLIENT_{{ $i }}_ACCESS_KEY_ID}
+        secret_access_key: ${CLIENT_{{ $i }}_SECRET_ACCESS_KEY}
+        buckets: {{ toJson $c.buckets }}
+    {{- end }}

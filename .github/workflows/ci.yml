@@ -55,6 +55,28 @@ jobs:
       - uses: actions/checkout@v4
       - run: make alerts
 
+  chart:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make chart
+
+  # The chart installed in a real cluster and used: a client in another pod
+  # puts a multipart object through it over TLS, and the provider is checked
+  # to hold ciphertext. Rendering can pass while the pod cannot start; this is
+  # what found that the Secrets were unreadable to the gateway's user.
+  chart-e2e:
+    name: Helm chart in kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: test/helm/kind.sh
+
   test:
     name: Test (Go ${{ matrix.go }})
     runs-on: ubuntu-latest

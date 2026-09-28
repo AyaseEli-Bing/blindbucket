@@ -1,0 +1,25 @@
+# Every optional part switched on, for `make chart` to render and validate.
+tls: { existingSecret: blindbucket-tls }
+upstream:
+  endpoint: https://s3.eu-central-1.amazonaws.com
+  region: eu-central-1
+  existingSecret: blindbucket-upstream
+  sessionToken: true
+keys:
+  provider: awskms
+  keyringSecret: blindbucket-keyring
+  awskms:
+    region: eu-central-1
+    keyId: alias/blindbucket
+    credentialsSecret: blindbucket-kms
+    encryptionContext: { deployment: prod-eu }
+clients:
+  - { name: backup-job, existingSecret: backup-job-s3, buckets: [backups] }
+  - { name: reports, existingSecret: reports-s3, buckets: ["*"] }
+names: { encrypt: true }
+networkPolicy:
+  enabled: true
+  s3From: [{ podSelector: { matchLabels: { app: backup-job } } }]
+  metricsFrom: [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: monitoring } } }]
+serviceMonitor: { enabled: true }
+prometheusRule: { enabled: true }

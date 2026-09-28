@@ -1,0 +1,19 @@
+{{- if .Values.prometheusRule.enabled }}
+{{- /*
+The rules are deploy/prometheus/alerts.yaml, copied into files/ because a chart
+cannot read outside itself; `make chart` fails if the two drift apart. The only
+change is the job label, which the Prometheus Operator sets to the Service name.
+*/}}
+{{- $job := printf "job=%q" (include "blindbucket.fullname" .) }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "blindbucket.fullname" . }}
+  labels:
+    {{- include "blindbucket.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- .Files.Get "files/alerts.yaml" | replace "job=\"blindbucket\"" $job | nindent 2 }}
+{{- end }}

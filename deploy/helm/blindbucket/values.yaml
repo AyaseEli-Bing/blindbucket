@@ -1,0 +1,144 @@
+# blindbucket as a shared service: one Deployment, reached over the network by
+# clients in other pods. That shape puts plaintext on the wire between client
+# and gateway, so this chart serves S3 over TLS only, and refuses to render
+# without it. Where the application can take a second container instead,
+# deploy/kubernetes-sidecar.yaml keeps the plaintext inside its pod and needs
+# no TLS at all; prefer it.
+#
+# The chart never creates a Secret. Every credential and key is referenced by
+# the name of a Secret that already exists, because a value given here would be
+# stored in the Helm release -- and very likely in version control.
+
+image:
+  repository: ghcr.io/lennardgeissler/blindbucket
+  # Empty means the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# The gateway keeps no state: a multipart upload's parts can land on different
+# replicas, because the upload id is a sealed token that carries what they need.
+replicaCount: 2
+
+# Required. A Secret of type kubernetes.io/tls with tls.crt and tls.key, which
+# is what cert-manager writes. The gateway reads it at startup, so a renewed
+# certificate takes effect with the next rollout; pair cert-manager with
+# something that restarts on Secret changes, or roll out before expiry.
+tls:
+  existingSecret: ""
+
+server:
+  # Presigned URLs, for reads only (ADR-019). The URL carries the object's
+  # plaintext key and is a bearer credential until it expires.
+  presign:
+    enabled: true
+    maxExpiry: 1h
+
+upstream:
+  endpoint: ""
+  region: us-east-1
+  pathStyle: false
+  # A Secret with access_key_id and secret_access_key. Clients never see these:
+  # that separation is what stops a client reaching the provider directly and
+  # writing plaintext.
+  existingSecret: ""
+  # true when the credentials are temporary: the Secret then also holds
+  # session_token.
+  sessionToken: false
+
+# Where the root key that unlocks the keyring comes from (ADR-013). It is asked
+# once, at startup.
+keys:
+  provider: file # file | vault | awskms
+  # A Secret whose keyring.json key holds the file from `blindbucket keygen`.
+  # Required for every provider: the services only unseal it.
+  keyringSecret: ""
+  # provider: file -- a Secret with the passphrase under `passphrase`, mounted
+  # as a file rather than passed in the environment.
+  passphraseSecret: ""
+  vault:
+    address: ""
+    mount: transit
+    keyName: blindbucket
+    namespace: ""
+    # A Secret with the token under `token`.
+    tokenSecret: ""
+  awskms:
+    region: ""
+    keyId: ""
+    endpoint: ""
+    encryptionContext: {}
+    # A Secret with access_key_id and secret_access_key. This build does not
+    # use the AWS credential chain.
+    credentialsSecret: ""
+    # true when the credentials are temporary: the Secret then also holds
+    # session_token.
+    sessionToken: false
+
+# The credentials the gateway accepts from its own clients. Each existingSecret
+# holds access_key_id and secret_access_key.
+clients: []
+#  - name: backup-job
+#    existingSecret: backup-job-s3
+#    buckets: ["backups"]
+
+crypto:
+  log2ChunkSize: 16 # 64 KiB
+
+# Object-name encryption (ADR-015). Not a switch to flip on a bucket that
+# already holds objects: read the comment in blindbucket.example.yaml first.
+names:
+  encrypt: false
+  maxListingKeys: 100000
+  maxConcurrentListings: 8
+
+# Not in this chart: the audit log and rollback detection. Both are a file per
+# instance that must survive the pod, which is a StatefulSet with a claim per
+# replica rather than this Deployment -- and the audit log's value depends on
+# where it is shipped, which a chart cannot decide.
+
+service:
+  type: ClusterIP
+  port: 443
+  # The admin port serves metrics and health. It is on the Service so that a
+  # ServiceMonitor can reach it; the NetworkPolicy below narrows who else can.
+  adminPort: 9100
+
+# Only the pods selected here may reach the S3 port; the admin port stays open
+# to the namespaces listed under metricsFrom. Off by default because it depends
+# on a CNI that enforces NetworkPolicy, and a policy that is silently not
+# enforced is worse than none.
+networkPolicy:
+  enabled: false
+  s3From: []
+  #  - podSelector: { matchLabels: { app: backup-job } }
+  metricsFrom: []
+  #  - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: monitoring } }
+
+# Prometheus Operator resources. The rules are deploy/prometheus/alerts.yaml,
+# with the job label set to this release.
+serviceMonitor:
+  enabled: false
+  interval: 30s
+  labels: {}
+prometheusRule:
+  enabled: false
+  labels: {}
+
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+# Memory is a function of streams in flight, not of object size. 256Mi is room
+# for a few dozen concurrent streams; watch blindbucket_active_streams.
+resources:
+  requests: { cpu: 100m, memory: 64Mi }
+  limits: { cpu: "2", memory: 256Mi }
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []

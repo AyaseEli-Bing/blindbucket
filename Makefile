@@ -11,6 +11,11 @@ TLA_TOOLS   ?= .tools/tla2tools.jar
 # nothing needs installing.
 PROMETHEUS_IMAGE ?= prom/prometheus:v3.15.0
 
+# helm and kubeconform for the chart in deploy/helm, from their images as well.
+HELM_IMAGE        ?= alpine/helm:4.3.0
+KUBECONFORM_IMAGE ?= ghcr.io/yannh/kubeconform:v0.7.0
+CHART             := deploy/helm/blindbucket
+
 ##@ Build and test
 .PHONY: all
 all: fmt lint test ## Format, lint, and test the project.
@@ -115,6 +120,31 @@ alerts: ## Check the Prometheus alerting rules and run their tests.
 		--entrypoint promtool $(PROMETHEUS_IMAGE) check rules alerts.yaml
 	docker run --rm -v "$(CURDIR)/deploy/prometheus:/rules:ro" -w /rules \
 		--entrypoint promtool $(PROMETHEUS_IMAGE) test rules tests.yaml
+
+##@ Helm chart (deploy/helm)
+
+HELM = docker run --rm -v "$(CURDIR)/deploy/helm:/charts" -w /charts $(HELM_IMAGE)
+
+# Lint, render with every optional part on, validate what renders against the
+# Kubernetes schemas, and require the two refusals: no TLS, and no values at
+# all. The chart's copy of the alerting rules must match deploy/prometheus.
+.PHONY: chart
+chart: ## Lint, render and validate the Helm chart.
+	cmp deploy/prometheus/alerts.yaml $(CHART)/files/alerts.yaml
+	$(HELM) lint blindbucket -f blindbucket/ci/full-values.yaml
+	@mkdir -p bin
+	$(HELM) template bb blindbucket -f blindbucket/ci/full-values.yaml > bin/chart.yaml
+	docker run --rm -v "$(CURDIR)/bin:/w" $(KUBECONFORM_IMAGE) -strict -summary \
+		-schema-location default \
+		-schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+		/w/chart.yaml
+	@! $(HELM) template bb blindbucket -f blindbucket/ci/full-values.yaml --set tls.existingSecret= >/dev/null 2>&1 \
+		|| { echo "the chart rendered without TLS"; exit 1; }
+	@echo "refuses to render without TLS: ok"
+
+.PHONY: chart-e2e
+chart-e2e: ## Install the chart in kind and put an object through it.
+	test/helm/kind.sh
 
 ##@ Upgrade tests
 

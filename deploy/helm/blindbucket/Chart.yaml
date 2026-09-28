@@ -1,0 +1,14 @@
+apiVersion: v2
+name: blindbucket
+description: A transparent S3 encryption gateway, run as a shared service behind TLS.
+type: application
+# The chart's own version. It changes when the chart does; appVersion is the
+# gateway release it deploys by default.
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/LennardGeissler/blindbucket
+sources:
+  - https://github.com/LennardGeissler/blindbucket
+annotations:
+  artifacthub.io/license: Apache-2.0
+keywords: [s3, encryption, gateway, proxy]

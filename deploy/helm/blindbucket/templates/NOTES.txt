@@ -1,0 +1,14 @@
+blindbucket {{ .Chart.AppVersion }} is serving S3 over TLS at
+
+  https://{{ include "blindbucket.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+
+Point a client at it with AWS_ENDPOINT_URL and one of the client credentials
+you configured. Its certificate has to be trusted by the client, and has to
+name that host.
+
+Health and metrics: port {{ .Values.service.adminPort }}, /healthz, /readyz and /metrics.
+{{- if not .Values.networkPolicy.enabled }}
+
+No NetworkPolicy is installed, so anything in the cluster can reach the S3 port.
+It still needs a client credential, but consider networkPolicy.enabled=true.
+{{- end }}

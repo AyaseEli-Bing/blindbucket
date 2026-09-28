@@ -34,6 +34,17 @@ below 69 % (measured: 70.9 % with Go 1.24, the declared floor). A push to `main`
 badge through a `badges` branch that holds one commit. `make cover` measures
 across packages the same way.
 
+**A Helm chart.** `deploy/helm/blindbucket` runs the gateway as a shared service
+other pods reach over the network. That shape puts plaintext on the wire, so the
+chart serves S3 over TLS only and refuses to render without a certificate, and
+it creates no Secrets: keys and credentials are referenced by name. Optional
+NetworkPolicy, ServiceMonitor and PrometheusRule, the last carrying the rules
+from `deploy/prometheus`. The audit log and rollback detection are left out,
+since each needs a file per instance that outlives the pod. `make chart` lints,
+renders and validates it; `make chart-e2e` installs it in kind and has the AWS
+CLI put a multipart object through it over TLS, then checks that MinIO holds
+ciphertext. Both run in CI.
+
 ### Fixed
 
 **The AWS CLI could not upload over HTTPS.** Over HTTPS the CLI sends

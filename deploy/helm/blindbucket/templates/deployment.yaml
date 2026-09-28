@@ -1,0 +1,141 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "blindbucket.fullname" . }}
+  labels:
+    {{- include "blindbucket.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "blindbucket.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "blindbucket.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        # The configuration is read once, at startup, so a change to it has to
+        # be a new pod.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # The gateway never calls the Kubernetes API.
+      automountServiceAccountToken: false
+      # fsGroup makes the mounted Secrets group-owned by the gateway's group:
+      # they are root's otherwise, and the gateway does not run as root.
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 65532
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: blindbucket
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve", "--config", "/etc/blindbucket/config/blindbucket.yaml"]
+          ports:
+            - { name: s3, containerPort: 9000, protocol: TCP }
+            - { name: admin, containerPort: 9100, protocol: TCP }
+          env:
+            - name: UPSTREAM_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: {{ .Values.upstream.existingSecret | quote }}, key: access_key_id } }
+            - name: UPSTREAM_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Values.upstream.existingSecret | quote }}, key: secret_access_key } }
+            {{- if .Values.upstream.sessionToken }}
+            - name: UPSTREAM_SESSION_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ .Values.upstream.existingSecret | quote }}, key: session_token } }
+            {{- end }}
+            {{- if eq .Values.keys.provider "vault" }}
+            - name: VAULT_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ .Values.keys.vault.tokenSecret | quote }}, key: token } }
+            {{- else if eq .Values.keys.provider "awskms" }}
+            - name: KMS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: {{ .Values.keys.awskms.credentialsSecret | quote }}, key: access_key_id } }
+            - name: KMS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Values.keys.awskms.credentialsSecret | quote }}, key: secret_access_key } }
+            {{- if .Values.keys.awskms.sessionToken }}
+            - name: KMS_SESSION_TOKEN
+              valueFrom: { secretKeyRef: { name: {{ .Values.keys.awskms.credentialsSecret | quote }}, key: session_token } }
+            {{- end }}
+            {{- end }}
+            {{- range $i, $c := .Values.clients }}
+            - name: CLIENT_{{ $i }}_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: {{ $c.existingSecret | quote }}, key: access_key_id } }
+            - name: CLIENT_{{ $i }}_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: {{ $c.existingSecret | quote }}, key: secret_access_key } }
+            {{- end }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            capabilities: { drop: ["ALL"] }
+          # Liveness does not touch the provider: an upstream outage restarting
+          # every gateway would turn a degradation into an outage. Readiness
+          # does, so a pod that cannot reach it stops taking traffic instead.
+          livenessProbe:
+            httpGet: { path: /healthz, port: admin }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /readyz, port: admin }
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - { name: config, mountPath: /etc/blindbucket/config, readOnly: true }
+            - { name: tls, mountPath: /etc/blindbucket/tls, readOnly: true }
+            - { name: keyring, mountPath: /etc/blindbucket/keys, readOnly: true }
+            {{- if eq .Values.keys.provider "file" }}
+            - { name: passphrase, mountPath: /etc/blindbucket/passphrase, readOnly: true }
+            {{- end }}
+      # On SIGTERM the process stops accepting connections and lets requests in
+      # flight finish within its own 30 seconds; the rest is room for the
+      # endpoint to leave the Service. An upload cut off here leaves nothing
+      # readable behind.
+      terminationGracePeriodSeconds: 45
+      volumes:
+        - name: config
+          configMap: { name: {{ include "blindbucket.fullname" . }} }
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.existingSecret | quote }}
+            items: [{ key: tls.crt, path: tls.crt }, { key: tls.key, path: tls.key }]
+            defaultMode: 0440
+        - name: keyring
+          secret:
+            secretName: {{ .Values.keys.keyringSecret | quote }}
+            items: [{ key: keyring.json, path: keyring.json }]
+            defaultMode: 0440
+        {{- if eq .Values.keys.provider "file" }}
+        - name: passphrase
+          secret:
+            secretName: {{ .Values.keys.passphraseSecret | quote }}
+            items: [{ key: passphrase, path: passphrase }]
+            defaultMode: 0440
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

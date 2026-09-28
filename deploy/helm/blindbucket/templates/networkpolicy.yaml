@@ -1,0 +1,24 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "blindbucket.fullname" . }}
+  labels:
+    {{- include "blindbucket.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "blindbucket.selectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    # An empty list here would admit nobody, which is what an enabled policy
+    # with no clients named should do.
+    - from:
+        {{- toYaml .Values.networkPolicy.s3From | nindent 8 }}
+      ports: [{ port: s3, protocol: TCP }]
+    {{- with .Values.networkPolicy.metricsFrom }}
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports: [{ port: admin, protocol: TCP }]
+    {{- end }}
+{{- end }}

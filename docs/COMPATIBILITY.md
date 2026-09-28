@@ -47,6 +47,18 @@ not measured yet.
 | MinIO client (`mc`) | RELEASE.2025-08-13 | **Works** | `v0.2.0` | `allow_unsigned_payload: true` on the proxy, for multipart only |
 | rclone | 1.75.1 | **Works with settings** | `v0.2.0` | `allow_unsigned_payload: true` on the proxy; `--ignore-checksum`; `--size-only` for `check` |
 
+**HTTP and HTTPS are different code paths.** A client chooses how to frame the
+body by the endpoint's scheme. Over HTTP the AWS CLI signs the whole body; over
+HTTPS it sends `STREAMING-UNSIGNED-PAYLOAD-TRAILER`, aws-chunked with its
+checksum in a trailer. Every row above except the next was measured over HTTP,
+so until the Helm chart's test put the CLI behind TLS, the HTTPS framing had never
+reached the gateway -- and the decoder rejected it
+(see [CHANGELOG.md](../CHANGELOG.md)).
+
+| Client | Version tested | Status | Last measured | Required settings |
+|---|---|---|---|---|
+| AWS CLI v2 over HTTPS | 2.37.4 | **Works** | every commit, in CI (`test/helm/kind.sh`) | none |
+
 Multipart included since M4: each client was run with a file over its own
 threshold, so the parts, the manifest and the size arithmetic are all exercised by
 the client's own code path rather than by a hand-built request.
@@ -62,7 +74,7 @@ export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_DEFAULT_REGION=us-eas
 
 | Command | Result |
 |---|---|
-| `aws s3 cp <file> s3://bucket/key` | works — uses aws-chunked with a CRC64NVME trailer |
+| `aws s3 cp <file> s3://bucket/key` | works — over HTTP a signed body; over HTTPS aws-chunked with a CRC64NVME trailer |
 | `aws s3 cp s3://bucket/key <file>` | works — identical SHA-256 |
 | `aws s3 ls s3://bucket/prefix/` | works — reports **plaintext** sizes |
 | `aws s3 sync <dir> s3://bucket/p/` | works, both directions, nested directories |

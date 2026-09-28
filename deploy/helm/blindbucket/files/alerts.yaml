@@ -1,0 +1,104 @@
+# Alerting rules for blindbucket.
+#
+# Load with `rule_files:` in prometheus.yml, or wrap the `groups:` list in a
+# PrometheusRule resource for the Prometheus Operator. The rules select metrics
+# by name and label only, and those are a stable interface from 1.0 (ADR-021);
+# internal/obs checks that every metric named here is one the gateway exports.
+#
+# Two things are deployment-specific and meant to be edited: the job name in
+# BlindbucketDown, and the key age in BlindbucketKeyringKeyOld, which is a
+# rotation policy rather than a fact about the gateway.
+#
+# Tested with `make alerts`: tests.yaml replays series against every rule.
+
+groups:
+  - name: blindbucket
+    rules:
+      # Stored data failed authentication. Either this gateway has a bug or the
+      # provider is changing objects; both are worth waking someone for, and
+      # neither should be found by a user opening a file. kind="freshness" is
+      # a detected rollback (ADR-018), the rest are tampering or corruption.
+      - alert: BlindbucketIntegrityFailure
+        expr: increase(blindbucket_integrity_failures_total[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: stored data failed authentication ({{ $labels.kind }})"
+          description: >-
+            {{ $value | humanize }} integrity failures of kind {{ $labels.kind }}
+            in the last 10 minutes. The gateway refused to serve the data. Either
+            it has a bug or the provider modified what it stores; see
+            docs/THREAT_MODEL.md.
+
+      # The audit log cannot be written. With audit.fail_closed the gateway is
+      # refusing requests; without it, requests are going unrecorded.
+      - alert: BlindbucketAuditBroken
+        expr: blindbucket_audit_broken == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: the audit log cannot be written"
+          description: >-
+            The audit log has been unwritable for over a minute. With fail_closed
+            the gateway is refusing requests; otherwise each request is a gap in
+            the log.
+
+      # A request the audit log could not record is a permanent gap in it, even
+      # if the log is writable again by the time anyone looks.
+      - alert: BlindbucketAuditGap
+        expr: increase(blindbucket_audit_failures_total[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: requests missing from the audit log"
+          description: >-
+            {{ $value | humanize }} requests in the last 10 minutes could not be
+            recorded. The log verifies around the gap, so the gap has to be
+            noted from here.
+
+      # Edit the job name to match the scrape configuration.
+      - alert: BlindbucketDown
+        expr: up{job="blindbucket"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }}: gateway unreachable"
+          description: >-
+            Prometheus has not reached the admin endpoint for five minutes.
+            /healthz does not depend on the provider, so this is the process or
+            the host, not an upstream outage.
+
+      # A 5xx is the gateway's own failure or the provider's passed through;
+      # blindbucket_upstream_duration_seconds by op tells which calls are slow.
+      - alert: BlindbucketServerErrors
+        expr: |
+          sum by (instance) (rate(blindbucket_requests_total{status="5xx"}[5m]))
+            / sum by (instance) (rate(blindbucket_requests_total[5m]))
+            > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: {{ $value | humanizePercentage }} of requests fail with 5xx"
+          description: >-
+            More than 5 % of requests have failed with a server error for ten
+            minutes.
+
+      # The oldest key still in the keyring. Rotation alone does not retire a
+      # key: it keeps opening everything it ever wrapped until
+      # `blindbucket keys remove` takes it out. 365 days is a policy, not a
+      # recommendation; set it to yours.
+      - alert: BlindbucketKeyringKeyOld
+        expr: |
+          time() - min by (instance) (blindbucket_keyring_key_created_timestamp_seconds)
+            > 365 * 86400
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }}: a key-encryption key is over a year old"
+          description: >-
+            The oldest key in the keyring was created {{ $value | humanizeDuration }}
+            ago. Add a new key, run `blindbucket rotate`, then
+            `blindbucket keys remove` the old one.

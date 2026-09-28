@@ -178,8 +178,13 @@ docker pull ghcr.io/lennardgeissler/blindbucket:1.0.0
 go install github.com/LennardGeissler/blindbucket/cmd/blindbucket@latest
 ```
 
+[deploy/helm/blindbucket](deploy/helm/blindbucket) is a Helm chart for the other
+shape, a shared gateway other pods reach over the network. It serves S3 over TLS
+only and refuses to render without a certificate, creates no Secrets, and is
+installed and used in a kind cluster on every commit.
+
 [deploy/kubernetes-sidecar.yaml](deploy/kubernetes-sidecar.yaml) is the sidecar
-deployment worked out: one gateway per pod, listening on loopback, so the
+deployment worked out, and the one to prefer: one gateway per pod, listening on loopback, so the
 plaintext hop never crosses a network interface.
 
 ## Try it today
@@ -329,7 +334,12 @@ upload ids this gateway issues are sealed tokens carrying the data key and the
 manifest id, and neither can be recovered from the provider's own listing — so the
 honest answer is a refusal rather than a list of ids no client could use.
 
-Two of those needed a fix that only a real client could have found: `mc` sends an
+The AWS CLI over HTTPS is measured separately, because it frames the body
+differently than over HTTP: aws-chunked, with its checksum in a trailer. Every
+other measurement was over HTTP, so that framing first reached the gateway when
+the Helm chart's test put the CLI behind TLS, and the decoder rejected it.
+
+Two of the others needed a fix that only a real client could have found: `mc` sends an
 aws-chunked body with no trailer section at all, and rclone attaches an `?x-id=`
 parameter that the router was refusing as an unknown sub-resource. boto3 found a
 third — user metadata was arriving with Go's canonical header casing, so
@@ -651,6 +661,8 @@ make lint           # golangci-lint
 make fuzz           # 30s per fuzz target
 make bench          # micro-benchmarks
 make vuln           # govulncheck
+make chart          # lint, render and validate the Helm chart
+make chart-e2e      # install it in kind and put an object through it over TLS
 make tla            # model-check spec/tla (needs a JRE; downloads tla2tools.jar)
 make demo-setup     # MinIO, keyring, config, gateway and a payload for demo/
 make demo           # run the end-to-end demo (see demo/README.md)
