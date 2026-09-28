@@ -418,7 +418,7 @@ specification. Full detail and the exact commands are in
 |---|---|---|
 | AWS CLI v2 | works — `cp`, `ls`, `rm`, `sync`, ranges, multipart | nothing |
 | boto3 | works — including paginators, delimiters and `upload_file` | nothing |
-| MinIO `mc` | works — `cp`, `ls`, `mirror`, `cat` | nothing |
+| MinIO `mc` | works — `cp`, `ls`, `mirror`, `cat`, multipart | `allow_unsigned_payload` on the proxy, for multipart only |
 | rclone | works | `--ignore-checksum`, and `allow_unsigned_payload` on the proxy |
 
 One call is deliberately not implemented: `ListMultipartUploads` returns 501. The

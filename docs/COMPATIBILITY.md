@@ -44,7 +44,7 @@ not measured yet.
 |---|---|---|---|---|
 | AWS CLI v2 | 2.36.43 | **Works** | every commit, in CI | none |
 | boto3 | 1.43.92 | **Works** | every commit, in CI | none |
-| MinIO client (`mc`) | RELEASE.2025-08-13 | **Works** | `v0.2.0` | `allow_unsigned_payload: true` on the proxy, for multipart only |
+| MinIO client (`mc`) | RELEASE.2025-08-13 | **Works** | 2026-09-28, after `v1.0.0` | `allow_unsigned_payload: true` on the proxy, for multipart only |
 | rclone | 1.75.1 | **Works with settings** | `v0.2.0` | `allow_unsigned_payload: true` on the proxy; `--ignore-checksum`; `--size-only` for `check` |
 
 **HTTP and HTTPS are different code paths.** A client chooses how to frame the
@@ -147,9 +147,12 @@ in `internal/auth/chunked.go` — the decoder expected a trailer block and rejec
 every `mc` upload until a real client was pointed at it.
 
 Its multipart path is different again: `mc` signs single-part bodies but sends
-`UNSIGNED-PAYLOAD` for the parts of a multipart upload, so a large `mc cp` fails
-with *"unsupported payload signing mode"* unless `allow_unsigned_payload: true` is
-set on the proxy. The same caveat as for rclone applies — enable it only behind TLS
+`UNSIGNED-PAYLOAD` for a multipart upload, so a large `mc cp` fails with
+*"unsupported payload signing mode"* unless `allow_unsigned_payload: true` is set
+on the proxy. Re-measured on 2026-09-28 with the same `mc` release: a 1 MiB
+`mc cp` works without the setting, and a 64 MiB one is refused at
+`CreateMultipartUpload` before any part is sent; with the setting it completes
+with an identical SHA-256. The same caveat as for rclone applies — enable it only behind TLS
 or on loopback. Below the threshold `mc` still needs nothing, which is why the
 summary row names multipart specifically.
 
