@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"slices"
 	"time"
 
 	"github.com/LennardGeissler/blindbucket/internal/config"
@@ -92,6 +93,12 @@ Flags:
 	target := *toKID
 	if target == "" {
 		target = ring.ActiveKID()
+	}
+	// Checked here rather than per object: a key id with a typo in it would
+	// otherwise fail every object one at a time in a real run, and in a dry run
+	// report every object as rotatable onto a key that does not exist.
+	if !slices.Contains(ring.KIDs(), target) {
+		return fmt.Errorf("%s holds no key %q (see `blindbucket keys list`)", cfg.Keys.Keyring, target)
 	}
 
 	client, err := upstream.New(upstream.Config{

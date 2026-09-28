@@ -50,6 +50,12 @@ ciphertext. Both run in CI.
 
 ### Fixed
 
+**`rotate --to-kid` accepted a key the keyring does not hold.** Only the id's
+syntax was checked, so a typo made a dry run report every object as rotatable
+onto a key that does not exist, and a real run fail each object in turn --
+nothing was written, but nothing said why until the end. The command now
+refuses up front and names the key.
+
 **The AWS CLI could not upload over HTTPS.** Over HTTPS the CLI sends
 `STREAMING-UNSIGNED-PAYLOAD-TRAILER`: aws-chunked, with its checksum in a
 trailer that follows the final `0` chunk directly. The decoder expected a CRLF
