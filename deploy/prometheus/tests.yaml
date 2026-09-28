@@ -1,0 +1,150 @@
+# Unit tests for alerts.yaml: `make alerts`, or
+#   promtool test rules deploy/prometheus/tests.yaml
+
+rule_files:
+  - alerts.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # The first integrity failure fires, from a series the gateway exports at
+  # zero from startup.
+  - interval: 1m
+    input_series:
+      - series: 'blindbucket_integrity_failures_total{instance="gw1",job="blindbucket",kind="chunk"}'
+        values: '0 0 0 1 1 1'
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: BlindbucketIntegrityFailure
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: BlindbucketIntegrityFailure
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: gw1
+              job: blindbucket
+              kind: chunk
+            exp_annotations:
+              summary: "gw1: stored data failed authentication (chunk)"
+              description: >-
+                1 integrity failures of kind chunk in the last 10 minutes. The
+                gateway refused to serve the data. Either it has a bug or the
+                provider modified what it stores; see docs/THREAT_MODEL.md.
+
+  # Why the gateway exports every kind at zero: a series born at 1 has nothing
+  # to rise from, and the same rule stays silent. This pins the reason, so the
+  # zero-initialisation in internal/obs is not removed as redundant.
+  - interval: 1m
+    input_series:
+      - series: 'blindbucket_integrity_failures_total{instance="gw1",job="blindbucket",kind="freshness"}'
+        values: '_ _ _ 1 1 1'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: BlindbucketIntegrityFailure
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      - series: 'blindbucket_audit_broken{instance="gw1",job="blindbucket"}'
+        values: '0 1 1 1'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: BlindbucketAuditBroken
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: BlindbucketAuditBroken
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: gw1
+              job: blindbucket
+            exp_annotations:
+              summary: "gw1: the audit log cannot be written"
+              description: >-
+                The audit log has been unwritable for over a minute. With
+                fail_closed the gateway is refusing requests; otherwise each
+                request is a gap in the log.
+
+  - interval: 1m
+    input_series:
+      - series: 'blindbucket_audit_failures_total{instance="gw1",job="blindbucket"}'
+        values: '0 0 2 2'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: BlindbucketAuditGap
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: gw1
+              job: blindbucket
+            exp_annotations:
+              summary: "gw1: requests missing from the audit log"
+              description: >-
+                2 requests in the last 10 minutes could not be recorded. The log
+                verifies around the gap, so the gap has to be noted from here.
+
+  - interval: 1m
+    input_series:
+      - series: 'up{instance="gw1",job="blindbucket"}'
+        values: '1 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: BlindbucketDown
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: BlindbucketDown
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+              instance: gw1
+              job: blindbucket
+            exp_annotations:
+              summary: "gw1: gateway unreachable"
+              description: >-
+                Prometheus has not reached the admin endpoint for five minutes.
+                /healthz does not depend on the provider, so this is the process
+                or the host, not an upstream outage.
+
+  # One request in ten fails: 10 %, above the 5 % threshold for ten minutes.
+  - interval: 1m
+    input_series:
+      - series: 'blindbucket_requests_total{instance="gw1",job="blindbucket",op="GetObject",status="2xx"}'
+        values: '0+540x20'
+      - series: 'blindbucket_requests_total{instance="gw1",job="blindbucket",op="GetObject",status="5xx"}'
+        values: '0+60x20'
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: BlindbucketServerErrors
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: gw1
+            exp_annotations:
+              summary: "gw1: 10% of requests fail with 5xx"
+              description: >-
+                More than 5 % of requests have failed with a server error for ten
+                minutes.
+
+  # Ages against an evaluation clock that starts at the Unix epoch: one key
+  # created 400 days before it, the active one 10 days before. The oldest one
+  # decides, whichever is active.
+  - interval: 1m
+    input_series:
+      - series: 'blindbucket_keyring_key_created_timestamp_seconds{instance="gw1",job="blindbucket",kid="2025-08",active="false"}'
+        values: '-34560000'
+      - series: 'blindbucket_keyring_key_created_timestamp_seconds{instance="gw1",job="blindbucket",kid="2026-09",active="true"}'
+        values: '-864000'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: BlindbucketKeyringKeyOld
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+              instance: gw1
+            exp_annotations:
+              summary: "gw1: a key-encryption key is over a year old"
+              description: >-
+                The oldest key in the keyring was created 400d 0h 0m 0s ago. Add a
+                new key, run `blindbucket rotate`, then `blindbucket keys remove`
+                the old one.

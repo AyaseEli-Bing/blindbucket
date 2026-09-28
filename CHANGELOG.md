@@ -21,6 +21,13 @@ version 1 would keep being readable.
 **`make help`.** Lists documented Makefile targets by section without changing
 what a bare `make` runs.
 
+**Prometheus alerting rules.** `deploy/prometheus/alerts.yaml` alerts on
+integrity failures, an unwritable audit log and gaps in it, an unreachable
+gateway, a 5xx rate over 5 % and a key-encryption key older than a year.
+`make alerts` checks them with promtool and replays series against each, and CI
+runs it. A Go test holds every metric the rules name to the metric contract of
+ADR-021, which promtool's own tests cannot do.
+
 ### Fixed
 
 **The first integrity failure was invisible to `increase()`.**
@@ -28,6 +35,9 @@ what a bare `make` runs.
 kind's first failure, so the series began at 1 and an alert on its increase
 stayed silent until the second. Every kind is now exported at zero from
 startup. No metric, type or label changes.
+
+**The README's key-age query took `max` where it meant `min`.** `time() - max(...)`
+over the key creation timestamps is the age of the newest key, not the oldest.
 
 ## [1.0.0] — 2026-09-27
 

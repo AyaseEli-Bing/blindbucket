@@ -7,6 +7,10 @@ FUZZTIME ?= 30s
 TLA_VERSION ?= v1.7.4
 TLA_TOOLS   ?= .tools/tla2tools.jar
 
+# promtool for the alerting rules in deploy/prometheus, run from the image so
+# nothing needs installing.
+PROMETHEUS_IMAGE ?= prom/prometheus:v3.15.0
+
 ##@ Build and test
 .PHONY: all
 all: fmt lint test ## Format, lint, and test the project.
@@ -99,6 +103,15 @@ COUNT ?= 100000
 ref-diff: ## Compare the Python and Go decoders.
 	cd ref/python && python3 difftest.py --count $(COUNT)
 	cd ref/python && python3 difftest_names.py --count $(COUNT)
+
+##@ Alerting rules (deploy/prometheus)
+
+.PHONY: alerts
+alerts: ## Check the Prometheus alerting rules and run their tests.
+	docker run --rm -v "$(CURDIR)/deploy/prometheus:/rules:ro" -w /rules \
+		--entrypoint promtool $(PROMETHEUS_IMAGE) check rules alerts.yaml
+	docker run --rm -v "$(CURDIR)/deploy/prometheus:/rules:ro" -w /rules \
+		--entrypoint promtool $(PROMETHEUS_IMAGE) test rules tests.yaml
 
 ##@ Upgrade tests
 

@@ -46,6 +46,15 @@ jobs:
       - name: Fail if go.mod or go.sum changed
         run: git diff --exit-code -- go.mod go.sum
 
+  # promtool's own tests replay invented series; the Go test in internal/obs is
+  # what holds the rules to metrics the gateway actually exports.
+  alerts:
+    name: Alerting rules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: make alerts
+
   test:
     name: Test (Go ${{ matrix.go }})
     runs-on: ubuntu-latest

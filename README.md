@@ -423,8 +423,17 @@ cover requests, upstream latency, bytes by direction and streams in flight;
 `blindbucket_active_streams` is the one that should track memory, since memory is
 a function of streams in flight and not of object size.
 `blindbucket_keyring_key_created_timestamp_seconds` is the input to a rotation
-decision — `time() - max(...)` over it is the age of the oldest key still in the
+decision — `time() - min(...)` over it is the age of the oldest key still in the
 keyring, which is the number a rotation policy is actually written against.
+
+Those alerts are written out in
+[deploy/prometheus/alerts.yaml](deploy/prometheus/alerts.yaml), with the audit
+log, an unreachable gateway and a 5xx rate beside them, and `make alerts` runs
+them against replayed series. Every kind of integrity failure is exported at zero
+from startup, because a series that first appears at 1 has nothing to rise from:
+`increase()` over it stays 0, and the alert would miss exactly the first failure.
+The rule tests keep that case as one that must stay silent, so the reason is not
+lost.
 
 ## The audit log
 

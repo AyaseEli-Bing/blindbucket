@@ -1,6 +1,9 @@
 package obs
 
 import (
+	"os"
+	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -98,9 +101,38 @@ func TestMetricsAreAContract(t *testing.T) {
 	}
 }
 
+// TestAlertsUseContractMetrics holds deploy/prometheus/alerts.yaml to the
+// contract. promtool's tests replay series the test file invents, so they pass
+// just as well against a metric the gateway stopped exporting; this is what
+// ties the rules to the names it actually uses.
+func TestAlertsUseContractMetrics(t *testing.T) {
+	rules, err := os.ReadFile(filepath.Join("..", "..", "deploy", "prometheus", "alerts.yaml"))
+	if err != nil {
+		t.Fatalf("read alerts: %v", err)
+	}
+	names := regexp.MustCompile(`blindbucket_[a-z_]+`).FindAllString(string(rules), -1)
+	if len(names) == 0 {
+		t.Fatal("alerts.yaml names no blindbucket metric")
+	}
+	for _, name := range names {
+		base := name
+		for _, suffix := range []string{"_bucket", "_count", "_sum"} {
+			if trimmed := strings.TrimSuffix(name, suffix); trimmed != name {
+				if _, ok := metricContract[trimmed]; ok {
+					base = trimmed
+				}
+			}
+		}
+		if _, ok := metricContract[base]; !ok {
+			t.Errorf("alerts.yaml uses %s, which the gateway does not export", name)
+		}
+	}
+}
+
 // TestIntegrityKindsStartAtZero requires every kind to be exported before its
-// first failure. A series born at 1 is invisible to increase(), so an alert
-// on this metric would miss the first failure.
+// first failure. A series born at 1 is invisible to increase(), so the alert
+// on this metric would miss the first failure; deploy/prometheus/tests.yaml
+// shows the rule staying silent in exactly that case.
 func TestIntegrityKindsStartAtZero(t *testing.T) {
 	registry := prometheus.NewRegistry()
 	NewMetrics(registry, MetricsConfig{})
