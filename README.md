@@ -4,6 +4,7 @@
 Clients speak ordinary S3. The storage provider only ever sees ciphertext — never plaintext, never keys.
 
 [![CI](https://github.com/LennardGeissler/blindbucket/actions/workflows/ci.yml/badge.svg)](https://github.com/LennardGeissler/blindbucket/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/LennardGeissler/blindbucket/badges/coverage.json)](#development)
 [![Go Report Card](https://goreportcard.com/badge/github.com/LennardGeissler/blindbucket)](https://goreportcard.com/report/github.com/LennardGeissler/blindbucket)
 [![Release](https://img.shields.io/github/v/release/LennardGeissler/blindbucket?label=release)](https://github.com/LennardGeissler/blindbucket/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -645,6 +646,7 @@ Requires Go 1.24 or newer (for `crypto/hkdf`) and Docker for the integration tes
 ```sh
 make build          # build ./bin/blindbucket
 make test           # go test -race
+make cover          # statement coverage across packages
 make lint           # golangci-lint
 make fuzz           # 30s per fuzz target
 make bench          # micro-benchmarks
@@ -672,6 +674,11 @@ BLINDBUCKET_TEST_KMS_ENDPOINT=http://127.0.0.1:4599 go test ./internal/rootkey
 # and against a running gateway, with a real client:
 python3 test/integration/clients/boto3/scenarios.py
 ```
+
+The coverage badge is measured with MinIO running, across every package: about
+74 %, where the unit tests alone reach about 42 % because the proxy's tests need a
+provider. CI fails below 72 %. The Vault and KMS paths are tested in a job of their
+own and not counted, and neither are the Python client tests or the TLA+ model.
 
 Production code is Go, without exception. Anything else in this repository — the Python
 client tests, the TLA+ model — has a written reason in

@@ -132,6 +132,8 @@ jobs:
   integration:
     name: Integration (MinIO)
     runs-on: ubuntu-latest
+    outputs:
+      coverage: ${{ steps.coverage.outputs.total }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -156,13 +158,63 @@ jobs:
           docker run --rm --network host --entrypoint sh cgr.dev/chainguard/minio:latest -c \
             "mc alias set local http://localhost:9002 minioadmin minioadmin && \
              mc mb --ignore-existing local/blindbucket-test"
-      - name: Run the integration tests
+      # Every package, not only the ones that need a provider: this is where
+      # coverage is measured, and without MinIO the proxy's tests skip, which
+      # would put it at about 42 % instead of about 74 %. -coverpkg counts a
+      # line in any package as covered by a test in any other.
+      - name: Run the integration tests, measuring coverage
         env:
           BLINDBUCKET_TEST_S3_ENDPOINT: http://localhost:9002
-        run: go test -race -count=1 ./internal/upstream/... ./internal/proxy/... ./internal/probe/... ./cmd/...
+        run: go test -race -count=1 -coverpkg=./... -coverprofile=coverage.out ./...
+      # The floor sits a little under the measured value, so it catches a
+      # change that drops tests rather than one that adds untested lines. The
+      # Vault and KMS paths are tested in their own job and not counted here.
+      - name: Coverage floor
+        id: coverage
+        env:
+          COVERAGE_MIN: "72"
+        run: |
+          total=$(go tool cover -func=coverage.out | awk '/^total:/ { sub(/%/, "", $3); print $3 }')
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "Statement coverage with MinIO: **${total} %** (floor ${COVERAGE_MIN} %)" >> "$GITHUB_STEP_SUMMARY"
+          if ! awk -v t="$total" -v min="$COVERAGE_MIN" 'BEGIN { exit !(t >= min) }'; then
+            echo "::error::coverage ${total} % is below the floor of ${COVERAGE_MIN} %"
+            exit 1
+          fi
       - name: MinIO logs on failure
         if: failure()
         run: docker logs minio
+
+  # The README's coverage badge: shields.io renders coverage.json from the
+  # badges branch. That branch holds one commit, replaced on every push to
+  # main, so it never grows; pull requests never reach this job, and it is the
+  # only one that may write to the repository.
+  coverage-badge:
+    name: Coverage badge
+    needs: integration
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Publish coverage.json to the badges branch
+        env:
+          TOTAL: ${{ needs.integration.outputs.coverage }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          color=$(awk -v t="$TOTAL" 'BEGIN {
+            if (t >= 80) print "brightgreen"; else if (t >= 70) print "green";
+            else if (t >= 60) print "yellow"; else print "red" }')
+          mkdir badges && cd badges
+          git init -q -b badges
+          printf '{"schemaVersion":1,"label":"coverage","message":"%s%%","color":"%s"}\n' \
+            "$TOTAL" "$color" > coverage.json
+          git add coverage.json
+          git -c user.name="github-actions[bot]" \
+            -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+            commit -q -m "coverage ${TOTAL} % at ${GITHUB_SHA::7}"
+          git push -q --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
 
   # Every released version writes, the current build reads. The promise that
   # objects written by any release stay readable, checked on every change

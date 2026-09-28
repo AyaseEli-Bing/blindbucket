@@ -28,6 +28,12 @@ gateway, a 5xx rate over 5 % and a key-encryption key older than a year.
 runs it. A Go test holds every metric the rules name to the metric contract of
 ADR-021, which promtool's own tests cannot do.
 
+**Coverage, measured and held.** The MinIO integration job now runs every
+package with `-coverpkg=./...`, writes the total to the job summary and fails
+below 72 % (measured: 73.6 %). A push to `main` publishes it as the README's
+badge through a `badges` branch that holds one commit. `make cover` measures
+across packages the same way.
+
 ### Fixed
 
 **The first integrity failure was invisible to `increase()`.**
