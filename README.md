@@ -1,13 +1,29 @@
-# blindbucket
+<h1 align="center">blindbucket</h1>
 
-**A transparent S3 encryption gateway, written in Go.**
-Clients speak ordinary S3. The storage provider only ever sees ciphertext — never plaintext, never keys.
+<p align="center">
+  <strong>A transparent S3 encryption gateway, written in Go.</strong><br>
+  Clients speak ordinary S3. The storage provider only ever sees ciphertext — never plaintext, never keys.
+</p>
 
-[![CI](https://github.com/LennardGeissler/blindbucket/actions/workflows/ci.yml/badge.svg)](https://github.com/LennardGeissler/blindbucket/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/LennardGeissler/blindbucket/badges/coverage.json)](#development)
-[![Go Report Card](https://goreportcard.com/badge/github.com/LennardGeissler/blindbucket)](https://goreportcard.com/report/github.com/LennardGeissler/blindbucket)
-[![Release](https://img.shields.io/github/v/release/LennardGeissler/blindbucket?label=release)](https://github.com/LennardGeissler/blindbucket/releases/latest)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+<p align="center">
+  <a href="https://github.com/LennardGeissler/blindbucket/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/LennardGeissler/blindbucket/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="#development"><img alt="Coverage" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/LennardGeissler/blindbucket/badges/coverage.json"></a>
+  <a href="https://goreportcard.com/report/github.com/LennardGeissler/blindbucket"><img alt="Go Report Card" src="https://goreportcard.com/badge/github.com/LennardGeissler/blindbucket"></a>
+  <a href="https://github.com/LennardGeissler/blindbucket/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/LennardGeissler/blindbucket?label=release"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
+</p>
+
+<p align="center">
+  <a href="#what-it-is">What it is</a> ·
+  <a href="#security-posture">Security</a> ·
+  <a href="#try-it-today">Try it</a> ·
+  <a href="#numbers">Numbers</a> ·
+  <a href="#clients">Clients</a> ·
+  <a href="#the-audit-log">Audit log</a> ·
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="#a-race-in-my-own-design-and-the-machine-that-found-it">Formal model</a> ·
+  <a href="#documentation">Docs</a>
+</p>
 
 <p align="center">
   <img src="demo/demo.gif" width="880"
@@ -20,6 +36,7 @@ Clients speak ordinary S3. The storage provider only ever sees ciphertext — ne
   as <code>make demo</code>.
 </sub></p>
 
+> [!NOTE]
 > **Status: `v1.0.0` — stable, and measured against AWS.** Standard S3 clients round-trip
 > through the gateway, multipart included: AWS CLI, boto3, `mc` and rclone all
 > work, and a 5 GiB `aws s3 cp` across two instances comes back with an identical
@@ -230,6 +247,9 @@ $ mc cat local/blindbucket-dev/big.tar.zst | head -c 16 | xxd
 Change one bit of the stored object and the download stops at that chunk rather
 than handing over a plausible-looking file.
 
+<details>
+<summary><b>Multipart, garbage collection and key rotation, walked through</b></summary>
+
 Anything over 8 MiB goes through multipart, which every S3 client does on its own.
 Each part is its own segment with its own salt, and a signed manifest binds them
 into one object so that a provider cannot serve a short one:
@@ -294,6 +314,8 @@ first: the format can be reviewed, fuzzed and measured before any HTTP is involv
 ./bin/blindbucket decrypt --keyring keyring.json -i big.tar.zst.bb -o restored.tar.zst
 ```
 
+</details>
+
 ## Numbers
 
 Measured on an Apple M4 (10 cores, 16 GiB) with Go 1.27.1, against MinIO in a
@@ -316,6 +338,76 @@ in [bench/](bench/).
 | 10 MiB objects through the gateway vs direct | 92–97 % of the provider's own throughput |
 | 1 KiB objects through the gateway vs direct | 70 % at one client, 89–92 % at 64 — about +0.5 ms per request |
 
+The allocation figures are the interesting ones. They do not change with the
+number of chunks, which is the whole of goal G3: memory is a function of how many
+streams are in flight, never of how large they are.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="bench/figures/memory-dark.svg">
+  <img alt="Gateway resident set while 10 GiB streams through it: about 22 MiB idle, peaking at 82 MiB during the upload and settling back to 23 MiB during the download" src="bench/figures/memory-light.svg">
+</picture>
+
+<details>
+<summary><b>Reading the memory figure</b></summary>
+
+Read that figure with two caveats. The upload is `aws s3 cp`, which splits 10 GiB
+into 1280 parts and keeps ten in flight, so the peak covers ten concurrent
+streams and not one. And on macOS the resident set does not fall when Go releases
+pages, which makes every number on that curve an upper bound — the download half
+is flat at 23 MiB because it never had to rise, not because the upload's memory
+was reclaimed. The portable per-stream evidence is the Go-heap measurement in the
+table above, which watches the heap rather than asking the operating system.
+
+AES-GCM was expected to run well ahead of any network the proxy sits behind, so
+the bottleneck should be the upstream and not the cipher. `warp` now says so
+rather than the expectation standing on its own: against MinIO on the same
+machine, 10 MiB objects move at 92–97 % of what the provider manages without the
+gateway in the way.
+
+</details>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="bench/figures/throughput-dark.svg">
+  <img alt="Throughput comparison across object sizes and concurrency: the gateway tracks the provider closely except for 10 MiB PUTs at 64 concurrent clients" src="bench/figures/throughput-light.svg">
+</picture>
+
+<details>
+<summary><b>Small objects, where a proxy costs something</b></summary>
+
+Small objects are where a proxy costs something, and it costs about half a
+millisecond per request: 1 KiB uploads run at 70 % of direct with a single
+client, rising to 89 % at 64 as that fixed cost amortises across concurrency. At
+64 clients the p99 is identical to the provider's own, because by then the tail
+belongs to the provider rather than to the gateway.
+
+</details>
+
+**One cell does not fit that picture**, and it is left standing rather than
+dropped: 10 MiB PUTs at 64 concurrent clients run at 18 % of direct. It
+reproduces across all three repetitions and is specific to PUT — GET at the same
+load is at 95 %.
+
+<details>
+<summary><b>Why the gateway is not what is slow there, and one honest asterisk</b></summary>
+
+The gateway is not what is slow, and that is now measured rather than guessed. A
+goroutine dump during the run shows every request handler parked waiting for the
+provider to answer, none of them on encryption or on a lock. The metrics put a
+number on it: across 184 uploads, total request time exceeded time spent waiting
+for the provider by 0.024 seconds — **0.13 ms per request**, against a mean of ten
+seconds each. Why the provider is slower under this particular access pattern is
+still open; the obvious candidate has now failed to reproduce twice.
+[bench/figures/results.md](bench/figures/results.md) has the numbers and what
+would settle it.
+
+One honest asterisk: the CLI's peak resident memory is about 70 MiB, essentially
+all of it the 64 MiB Argon2id arena used once to unlock the keyring. That is a
+deliberate trade — memory hardness is the point of Argon2id — and it is why the
+constant-memory claim is measured on the Go heap rather than inferred from RSS.
+[ADR-002](docs/adr/ADR-002-key-hierarchy.md) records the reasoning.
+
+</details>
+
 ## Clients
 
 Measured by pointing each client at the gateway and running it, not by reading a
@@ -334,6 +426,9 @@ upload ids this gateway issues are sealed tokens carrying the data key and the
 manifest id, and neither can be recovered from the provider's own listing — so the
 honest answer is a refusal rather than a list of ids no client could use.
 
+<details>
+<summary><b>What only real clients could find</b></summary>
+
 The AWS CLI over HTTPS is measured separately, because it frames the body
 differently than over HTTP: aws-chunked, with its checksum in a trailer. Every
 other measurement was over HTTP, so that framing first reached the gateway when
@@ -345,60 +440,7 @@ parameter that the router was refusing as an unknown sub-resource. boto3 found a
 third — user metadata was arriving with Go's canonical header casing, so
 `response["Metadata"]["origin"]` came back as `"Origin"` and every lookup missed.
 
-The allocation figures are the interesting ones. They do not change with the
-number of chunks, which is the whole of goal G3: memory is a function of how many
-streams are in flight, never of how large they are.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="bench/figures/memory-dark.svg">
-  <img alt="Gateway resident set while 10 GiB streams through it: about 22 MiB idle, peaking at 82 MiB during the upload and settling back to 23 MiB during the download" src="bench/figures/memory-light.svg">
-</picture>
-
-Read that figure with two caveats. The upload is `aws s3 cp`, which splits 10 GiB
-into 1280 parts and keeps ten in flight, so the peak covers ten concurrent
-streams and not one. And on macOS the resident set does not fall when Go releases
-pages, which makes every number on that curve an upper bound — the download half
-is flat at 23 MiB because it never had to rise, not because the upload's memory
-was reclaimed. The portable per-stream evidence is the Go-heap measurement in the
-table above, which watches the heap rather than asking the operating system.
-
-AES-GCM was expected to run well ahead of any network the proxy sits behind, so
-the bottleneck should be the upstream and not the cipher. `warp` now says so
-rather than the expectation standing on its own: against MinIO on the same
-machine, 10 MiB objects move at 92–97 % of what the provider manages without the
-gateway in the way.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="bench/figures/throughput-dark.svg">
-  <img alt="Throughput comparison across object sizes and concurrency: the gateway tracks the provider closely except for 10 MiB PUTs at 64 concurrent clients" src="bench/figures/throughput-light.svg">
-</picture>
-
-Small objects are where a proxy costs something, and it costs about half a
-millisecond per request: 1 KiB uploads run at 70 % of direct with a single
-client, rising to 89 % at 64 as that fixed cost amortises across concurrency. At
-64 clients the p99 is identical to the provider's own, because by then the tail
-belongs to the provider rather than to the gateway.
-
-**One cell does not fit that picture**, and it is left standing rather than
-dropped: 10 MiB PUTs at 64 concurrent clients run at 18 % of direct. It
-reproduces across all three repetitions and is specific to PUT — GET at the same
-load is at 95 %.
-
-The gateway is not what is slow, and that is now measured rather than guessed. A
-goroutine dump during the run shows every request handler parked waiting for the
-provider to answer, none of them on encryption or on a lock. The metrics put a
-number on it: across 184 uploads, total request time exceeded time spent waiting
-for the provider by 0.024 seconds — **0.13 ms per request**, against a mean of ten
-seconds each. Why the provider is slower under this particular access pattern is
-still open; the obvious candidate has now failed to reproduce twice.
-[bench/figures/results.md](bench/figures/results.md) has the numbers and what
-would settle it.
-
-One honest asterisk: the CLI's peak resident memory is about 70 MiB, essentially
-all of it the 64 MiB Argon2id arena used once to unlock the keyring. That is a
-deliberate trade — memory hardness is the point of Argon2id — and it is why the
-constant-memory claim is measured on the Go heap rather than inferred from RSS.
-[ADR-002](docs/adr/ADR-002-key-hierarchy.md) records the reasoning.
+</details>
 
 ## Running it
 
@@ -467,6 +509,9 @@ passphrase, nothing that could also write a log. That is the reason for a
 signature rather than a MAC: an auditor can be given the log without being given
 the ability to forge one.
 
+<details>
+<summary><b>Verifying a log, and reading it back</b></summary>
+
 ```sh
 blindbucket audit pubkey --keyring keyring.json      # record this elsewhere, once
 blindbucket audit verify --public-key <key> audit.log
@@ -491,6 +536,8 @@ $ blindbucket audit verify --keyring keyring.json --print audit.log
      3  2026-09-13T11:52:13.284224Z  GetObject     403 AKIANOTOURS (rejected) backups/2026/09/db.sql.zst  [SignatureDoesNotMatch]
      4  2026-09-13T11:52:13.284233Z  DeleteObject  204 backup-job   backups/2026/08/db.sql.zst
 ```
+
+</details>
 
 **Two things it does not do**, stated here rather than in a footnote.
 
@@ -582,6 +629,9 @@ chained but unsigned — both by design, both in
 [ADR-016](docs/adr/ADR-016-audit-log.md). And a **presigned URL carries the object's
 plaintext key**, which is the one thing name encryption otherwise keeps out of sight.
 
+<details>
+<summary><b>Unsealing the keyring, and server-side copy</b></summary>
+
 **Unsealing the keyring.** The root key can come from a passphrase, from Vault's Transit
 engine or from AWS KMS, and the keyring file records which one sealed it — so a keyring
 from the wrong environment is named as such rather than failing as a decryption error. The
@@ -600,6 +650,8 @@ the client's multipart threshold the AWS CLI switches to `UploadPartCopy`, which
 stay server-side: a part is a segment with its own salt, so the range is decrypted and
 re-encrypted on the way through. Why, and why the shared data key is not nonce reuse in the
 sense that matters, is [ADR-012](docs/adr/ADR-012-copy-semantics.md).
+
+</details>
 
 ## A race in my own design, and the machine that found it
 

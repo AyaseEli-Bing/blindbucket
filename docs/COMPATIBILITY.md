@@ -184,6 +184,16 @@ directions, on nested directories.
 
 ---
 
+## Bugs only a real client found
+
+Three clients needed a fix that only a real client could have found. `mc` sends an
+aws-chunked body with no trailer section at all; rclone attaches an `?x-id=`
+parameter that the router was refusing as an unknown sub-resource; and boto3 found
+the third — user metadata was arriving with Go's canonical header casing, so
+`response["Metadata"]["origin"]` came back as `"Origin"` and every lookup missed.
+
+The fourth is the AWS CLI over HTTPS, in the summary above.
+
 ## Known limits
 
 These apply to every client.
