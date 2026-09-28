@@ -21,6 +21,14 @@ version 1 would keep being readable.
 **`make help`.** Lists documented Makefile targets by section without changing
 what a bare `make` runs.
 
+### Fixed
+
+**The first integrity failure was invisible to `increase()`.**
+`blindbucket_integrity_failures_total` created a series for a kind only at that
+kind's first failure, so the series began at 1 and an alert on its increase
+stayed silent until the second. Every kind is now exported at zero from
+startup. No metric, type or label changes.
+
 ## [1.0.0] — 2026-09-27
 
 The release that says what it promises. Nothing in the format changes: format

@@ -97,3 +97,37 @@ func TestMetricsAreAContract(t *testing.T) {
 		}
 	}
 }
+
+// TestIntegrityKindsStartAtZero requires every kind to be exported before its
+// first failure. A series born at 1 is invisible to increase(), so an alert
+// on this metric would miss the first failure.
+func TestIntegrityKindsStartAtZero(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	NewMetrics(registry, MetricsConfig{})
+
+	families, err := registry.Gather()
+	if err != nil {
+		t.Fatalf("Gather: %v", err)
+	}
+	exported := map[string]float64{}
+	for _, family := range families {
+		if family.GetName() != "blindbucket_integrity_failures_total" {
+			continue
+		}
+		for _, metric := range family.GetMetric() {
+			for _, pair := range metric.GetLabel() {
+				exported[pair.GetValue()] = metric.GetCounter().GetValue()
+			}
+		}
+	}
+	for _, kind := range []string{
+		KindChunk, KindHeader, KindDEKUnwrap, KindManifest, KindToken, KindSize, KindFreshness,
+	} {
+		value, ok := exported[kind]
+		if !ok {
+			t.Errorf("kind %q is not exported before its first failure", kind)
+		} else if value != 0 {
+			t.Errorf("kind %q starts at %v, want 0", kind, value)
+		}
+	}
+}

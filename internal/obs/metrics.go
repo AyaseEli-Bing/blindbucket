@@ -39,6 +39,11 @@ const (
 	KindFreshness = "freshness"
 )
 
+// integrityKinds lists every kind, so that each series exists from startup.
+var integrityKinds = []string{
+	KindChunk, KindHeader, KindDEKUnwrap, KindManifest, KindToken, KindSize, KindFreshness,
+}
+
 // Metrics is the gateway's instrument panel.
 //
 // A nil *Metrics is usable and records nothing, so a caller that was built
@@ -89,7 +94,7 @@ func NewMetrics(reg prometheus.Registerer, cfg MetricsConfig) *Metrics {
 	}, []string{"version", "go_version"})
 	buildInfo.WithLabelValues(cfg.Version, runtime.Version()).Set(1)
 
-	return &Metrics{
+	m := &Metrics{
 		requests: factory.counterVec(prometheus.CounterOpts{
 			Name: "blindbucket_requests_total",
 			Help: "S3 requests served, by operation and HTTP status.",
@@ -169,6 +174,15 @@ func NewMetrics(reg prometheus.Registerer, cfg MetricsConfig) *Metrics {
 				"Absent for keys whose keyring records no date.",
 		}, []string{"kid", "active"}),
 	}
+
+	// Every integrity kind starts at zero rather than appearing at its first
+	// failure. A series born at 1 has no earlier sample to rise from, so
+	// increase() over it is 0 and an alert on the metric would miss exactly
+	// the first failure — the one an operator most needs to hear about.
+	for _, kind := range integrityKinds {
+		m.integrityFailures.WithLabelValues(kind)
+	}
+	return m
 }
 
 // KeyringLoaded records the keyring the gateway started with.
