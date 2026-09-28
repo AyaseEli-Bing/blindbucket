@@ -101,8 +101,12 @@ func chunkedBody(t *testing.T, res *Result, chunks [][]byte, trailer map[string]
 			prev = sig
 		}
 		out.WriteString(header + "\r\n")
-		out.Write(data)
-		out.WriteString("\r\n")
+		if len(data) > 0 {
+			// The final, empty chunk has no data and so no data CRLF: the
+			// trailer follows its header line directly.
+			out.Write(data)
+			out.WriteString("\r\n")
+		}
 	}
 
 	for _, c := range chunks {
@@ -567,4 +571,34 @@ func FuzzChunkedReader(f *testing.F) {
 		}
 		_, _ = io.Copy(io.Discard, br)
 	})
+}
+
+// TestChunkedTrailerFollowsTheFinalChunkHeader pins the framing real clients
+// send, as literal bytes rather than through chunkedBody: the trailer follows
+// "0\r\n" directly, with no CRLF of its own for the empty chunk. The AWS CLI
+// sends exactly this over HTTPS, where it moves its checksum into the trailer.
+// An encoder and a decoder written from the same misreading agree with each
+// other, which is how the parser once expected a CRLF there and every such
+// upload failed while the tests passed.
+func TestChunkedTrailerFollowsTheFinalChunkHeader(t *testing.T) {
+	t.Parallel()
+
+	// CRC32 of "hello" is 0x3610a686.
+	body := "5\r\nhello\r\n0\r\nx-amz-checksum-crc32:NhCmhg==\r\n\r\n"
+	res := chunkedResult(PayloadStreamingUnsignedTrailer)
+	br, _, err := NewBodyReader(chunkedRequest(t, []byte(body), 5,
+		map[string]string{"X-Amz-Trailer": "x-amz-checksum-crc32"}), res)
+	if err != nil {
+		t.Fatalf("NewBodyReader: %v", err)
+	}
+	got, err := io.ReadAll(br)
+	if err != nil {
+		t.Fatalf("the framing the AWS CLI sends was rejected: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Errorf("decoded %q, want %q", got, "hello")
+	}
+	if tr := br.Trailer().Get("x-amz-checksum-crc32"); tr != "NhCmhg==" {
+		t.Errorf("trailer checksum = %q, want %q", tr, "NhCmhg==")
+	}
 }

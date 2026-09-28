@@ -173,10 +173,13 @@ func (c *ChunkedReader) nextChunk() error {
 	}
 
 	if size == 0 {
-		// The final, empty chunk. Its signature covers no data, and the trailer
-		// follows it.
-		if err := c.finishChunk(); err != nil {
-			return err
+		// The final, empty chunk. Its signature covers no data, and it has no
+		// data CRLF: the trailer follows its header line directly, and the
+		// empty line that ends the trailer ends the body. Expecting a CRLF here
+		// rejected every body with a trailer, which is what the AWS CLI sends
+		// over HTTPS.
+		if err := c.verifyChunkSignature(); err != nil {
+			return c.fail(err)
 		}
 		if err := c.readTrailer(); err != nil {
 			return c.fail(err)
@@ -197,6 +200,15 @@ func (c *ChunkedReader) finishChunk() error {
 	if err := c.expectCRLF(); err != nil {
 		return c.fail(err)
 	}
+	if err := c.verifyChunkSignature(); err != nil {
+		return c.fail(err)
+	}
+	return nil
+}
+
+// verifyChunkSignature checks the current chunk's signature and advances the
+// chain. It is a no-op for unsigned payloads.
+func (c *ChunkedReader) verifyChunkSignature() error {
 	if !c.mode.Signed() {
 		return nil
 	}
@@ -212,7 +224,7 @@ func (c *ChunkedReader) finishChunk() error {
 
 	expected := Sign(c.signingKey, stringToSign)
 	if !equalSignature(expected, c.chunkSig) {
-		return c.fail(ErrChunkSignature)
+		return ErrChunkSignature
 	}
 	// Each signature feeds the next, so a single altered chunk invalidates the
 	// remainder of the body rather than just itself.
@@ -228,10 +240,9 @@ func (c *ChunkedReader) readTrailer() error {
 	for range maxTrailerLines {
 		line, err := c.readLine()
 		if errors.Is(err, io.EOF) {
-			// A body with no trailer section ends right after the final chunk's
-			// CRLF. STREAMING-AWS4-HMAC-SHA256-PAYLOAD is exactly that shape,
-			// and it is what the MinIO client sends -- treating the missing
-			// section as a malformed body rejected every mc upload.
+			// A body may end right after the final chunk's header line, without
+			// the empty line that closes a trailer section. Treating the missing
+			// line as a malformed body rejected every mc upload.
 			break
 		}
 		if err != nil {

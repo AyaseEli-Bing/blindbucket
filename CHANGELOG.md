@@ -36,6 +36,16 @@ across packages the same way.
 
 ### Fixed
 
+**The AWS CLI could not upload over HTTPS.** Over HTTPS the CLI sends
+`STREAMING-UNSIGNED-PAYLOAD-TRAILER`: aws-chunked, with its checksum in a
+trailer that follows the final `0` chunk directly. The decoder expected a CRLF
+after that chunk as if it carried data, and refused every such body with
+`IncompleteBody`. Every client measurement so far had been over HTTP, where the
+CLI signs the whole body instead, and the tests built their bodies with an
+encoder that made the same mistake -- so the two agreed and the defect never
+showed. The Helm chart's test found it. A test now holds the decoder to the
+literal bytes the CLI sends, captured from 2.37.4.
+
 **The first integrity failure was invisible to `increase()`.**
 `blindbucket_integrity_failures_total` created a series for a kind only at that
 kind's first failure, so the series began at 1 and an alert on its increase
