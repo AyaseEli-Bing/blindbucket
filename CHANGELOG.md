@@ -46,6 +46,12 @@ encoder that made the same mistake -- so the two agreed and the defect never
 showed. The Helm chart's test found it. A test now holds the decoder to the
 literal bytes the CLI sends, captured from 2.37.4.
 
+**The sidecar example could not read its own keyring.**
+`deploy/kubernetes-sidecar.yaml` mounted the keyring Secret with mode `0400`,
+owned by root, into a container that runs as UID 65532. The pod now sets
+`fsGroup: 65532` and the mode is `0440`. The chart's test found this in its own
+templates first.
+
 **The first integrity failure was invisible to `increase()`.**
 `blindbucket_integrity_failures_total` created a series for a kind only at that
 kind's first failure, so the series began at 1 and an alert on its increase

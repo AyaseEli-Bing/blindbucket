@@ -94,8 +94,12 @@ spec:
     metadata:
       labels: { app: my-app }
     spec:
+      # fsGroup makes the mounted Secret group-owned by the gateway's group:
+      # it is root's otherwise, and the gateway does not run as root, so it
+      # could not read its own keyring.
       securityContext:
         runAsNonRoot: true
+        fsGroup: 65532
         seccompProfile: { type: RuntimeDefault }
 
       containers:
@@ -185,4 +189,4 @@ spec:
           secret:
             secretName: blindbucket-keys
             items: [{ key: keyring.json, path: keyring.json }]
-            defaultMode: 0400
+            defaultMode: 0440
