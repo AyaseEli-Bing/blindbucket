@@ -336,3 +336,74 @@ audit:
 		})
 	}
 }
+
+// TestValidationNamesTheProblem complements TestValidation, which only requires
+// a refusal: here each case must be refused for its own reason, so a check that
+// stopped working cannot hide behind another one that fires first.
+func TestValidationNamesTheProblem(t *testing.T) {
+	const (
+		upstreamOK = `upstream: {endpoint: "http://x", region: r, access_key_id: a, secret_access_key: b}`
+		clientsOK  = `clients: [{name: c, access_key_id: k, secret_access_key: s, buckets: ["*"]}]`
+		keysOK     = `keys: {keyring: k}`
+	)
+	doc := func(parts ...string) string { return strings.Join(parts, "\n") + "\n" }
+
+	for name, tc := range map[string]struct{ body, want string }{
+		"an empty listen address": {doc(`server: {listen: ""}`, upstreamOK, clientsOK, keysOK),
+			"server.listen must not be empty"},
+		"no region": {doc(`upstream: {endpoint: "http://x", region: "", access_key_id: a, secret_access_key: b}`,
+			clientsOK, keysOK), "upstream.region is required"},
+		"a client without an access key": {doc(upstreamOK,
+			`clients: [{name: c, secret_access_key: s, buckets: ["*"]}]`, keysOK), `client "c" has no access_key_id`},
+		"a client without a secret": {doc(upstreamOK,
+			`clients: [{name: c, access_key_id: k, buckets: ["*"]}]`, keysOK), `client "c" has no secret_access_key`},
+		"an unknown key provider": {doc(upstreamOK, clientsOK, `keys: {provider: hsm, keyring: k}`),
+			`keys.provider "hsm" is not one of`},
+		"vault without a token": {doc(upstreamOK, clientsOK,
+			`keys: {provider: vault, keyring: k, vault: {address: "http://v", key_name: n}}`), "keys.vault.token is required"},
+		"vault without a key name": {doc(upstreamOK, clientsOK,
+			`keys: {provider: vault, keyring: k, vault: {address: "http://v", token: t}}`), "keys.vault.key_name is required"},
+		"kms without a region": {doc(upstreamOK, clientsOK,
+			`keys: {provider: awskms, keyring: k, awskms: {key_id: i, access_key_id: a, secret_access_key: s}}`),
+			"keys.awskms.region is required"},
+		"kms without a key id": {doc(upstreamOK, clientsOK,
+			`keys: {provider: awskms, keyring: k, awskms: {region: r, access_key_id: a, secret_access_key: s}}`),
+			"keys.awskms.key_id is required"},
+		"kms without credentials": {doc(upstreamOK, clientsOK,
+			`keys: {provider: awskms, keyring: k, awskms: {region: r, key_id: i}}`), "keys.awskms credentials are required"},
+		"a presign window that does not parse": {doc(`server: {presign: {max_expiry: "a week"}}`,
+			upstreamOK, clientsOK, keysOK), "max_expiry"},
+		"a negative presign window": {doc(`server: {presign: {max_expiry: "-1h"}}`,
+			upstreamOK, clientsOK, keysOK), "must not be negative"},
+		"a presign window past S3's maximum": {doc(`server: {presign: {max_expiry: "169h"}}`,
+			upstreamOK, clientsOK, keysOK), "S3's own maximum"},
+		"a negative freshness sync interval": {doc(upstreamOK, clientsOK, keysOK,
+			`freshness: {index: /tmp/f.idx, sync_every: -1}`), "freshness.sync_every must not be negative"},
+		"a tombstone retention that does not parse": {doc(upstreamOK, clientsOK, keysOK,
+			`freshness: {index: /tmp/f.idx, tombstone_retention: "forever"}`), "tombstone_retention"},
+		"a negative tombstone retention": {doc(upstreamOK, clientsOK, keysOK,
+			`freshness: {index: /tmp/f.idx, tombstone_retention: "-1h"}`), "tombstone_retention must not be negative"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := Load(write(t, tc.body))
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("got %v, want an error containing %q", err, tc.want)
+			}
+		})
+	}
+
+	// Empty means the freshness package's own default, which it applies; a
+	// value is parsed as given.
+	for body, want := range map[string]time.Duration{
+		`freshness: {index: /tmp/f.idx}`:                              0,
+		`freshness: {index: /tmp/f.idx, tombstone_retention: "720h"}`: 720 * time.Hour,
+	} {
+		cfg, err := Load(write(t, doc(upstreamOK, clientsOK, keysOK, body)))
+		if err != nil {
+			t.Fatalf("Load: %v", err)
+		}
+		if d, err := cfg.Freshness.Retention(); err != nil || d != want {
+			t.Errorf("%s: retention = %v, %v; want %v", body, d, err, want)
+		}
+	}
+}
