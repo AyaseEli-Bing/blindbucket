@@ -37,12 +37,18 @@
 </sub></p>
 
 > [!NOTE]
-> **Status: `v1.0.0` — stable, and measured against AWS.** Standard S3 clients round-trip
+> **Status: `v1.1.0` — stable, and measured against AWS.** Standard S3 clients round-trip
 > through the gateway, multipart included: AWS CLI, boto3, `mc` and rclone all
 > work, and a 5 GiB `aws s3 cp` across two instances comes back with an identical
 > SHA-256. Key rotation, server-side copy, a signed audit log, object-name
 > encryption, metrics and health endpoints are in, and the keyring can be
 > unsealed by Vault Transit or AWS KMS instead of a passphrase.
+>
+> **New in 1.1:** `migrate-names` moves a bucket written in the clear to
+> encrypted names, `reseal` moves a keyring between a passphrase, Vault and KMS,
+> and on AWS the gateway takes its credentials from the platform — IRSA, EKS Pod
+> Identity, an ECS task role, the instance role — so the Helm chart can give it a
+> role instead of a key in a Secret.
 >
 > **Rollback detection** tells that a provider served an older but genuine
 > version of an object — off by default, and worth reading
@@ -51,7 +57,8 @@
 >
 > The integration suite runs against three providers: MinIO and **Garage** on
 > every change, and **AWS S3 and KMS** on demand, where the suite passes and
-> boto3 and the AWS CLI go through a gateway whose keyring KMS seals. Garage
+> boto3 and the AWS CLI go through a gateway whose keyring KMS seals, and through
+> one that takes its credentials from web identity. Garage
 > ignores the condition `blindbucket rotate` relies on to never overwrite a
 > client's write, so a rotation measures the provider's conditional writes before
 > it starts and refuses where they are not enforced
@@ -186,7 +193,7 @@ in **[docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)**.
 
 ```sh
 # Container: distroless, nonroot, no shell, 21 MB.
-docker pull ghcr.io/lennardgeissler/blindbucket:1.0.0
+docker pull ghcr.io/lennardgeissler/blindbucket:1.1.0
 
 # Or a binary, with checksums and an SBOM alongside it:
 #   https://github.com/LennardGeissler/blindbucket/releases
@@ -612,8 +619,9 @@ the gateway already costs per request.
 | M8 | Measured against real providers: AWS S3 and KMS done; R2 and B2 not yet | in progress |
 | M9 | Benchmarks over a real network, gateway and bucket in one region | not started |
 | M10 | 1.0: the stability promise (ADR-021), an upgrade test over every release, test vectors on every release | **done** |
-| — | `migrate-names`: an existing bucket moved to encrypted names, model-checked first (ADR-022) | **done**, unreleased |
-| — | `reseal`: a keyring moved between a passphrase, Vault and KMS, verified before it replaces (ADR-023) | **done**, unreleased |
+| — | `migrate-names`: an existing bucket moved to encrypted names, model-checked first (ADR-022) | **done** in 1.1 |
+| — | `reseal`: a keyring moved between a passphrase, Vault and KMS, verified before it replaces (ADR-023) | **done** in 1.1 |
+| — | AWS credentials from the platform — IRSA, Pod Identity, the instance role — without the SDK (ADR-024), and a Helm chart that uses them | **done** in 1.1 |
 
 M4 is the point the project becomes worth showing: multipart is what "works with real S3
 clients" actually means for anything over 8 MiB. M3.5 existed to get its coordination rules

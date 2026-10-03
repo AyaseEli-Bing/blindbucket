@@ -16,6 +16,24 @@ version 1 would keep being readable.
 
 ## [Unreleased]
 
+## [1.1.0] — 2026-10-03
+
+Three things 1.0 could not do: move a bucket to encrypted names, move a keyring
+to another root-key source, and run on AWS without a long-lived key. All of it is
+additive under [ADR-021](docs/adr/ADR-021-what-1.0-promises.md) — new commands,
+new configuration keys, one new `--json` field — and the format is still `1`.
+Among the fixes, two matter to 1.0 users in particular. Against AWS, two
+overlapping uploads of one key could leave an object no read could open, because
+AWS does not keep the write the gateway assumed it kept
+([ADR-025](docs/adr/ADR-025-writes-rank-by-when-they-began.md)); the AWS workflow
+run for this release found it. And the AWS CLI's uploads to a gateway serving
+HTTPS were refused.
+
+**Upgrading:** `rotate` and `migrate-names` now list a key's open uploads before
+publishing a copy, so the credentials they run with need
+`s3:ListBucketMultipartUploads` on the bucket, as `gc`'s already did. Without
+it every object is reported as failed and left as it was.
+
 ### Added
 
 **The AWS credential chain, without the SDK.** The upstream and KMS sections
@@ -135,6 +153,23 @@ CLI put a multipart object through it over TLS, then checks that MinIO holds
 ciphertext. Both run in CI. On EKS it needs no AWS key in a Secret: a ServiceAccount
 carries the IRSA role or the Pod Identity association, and `credentialSource`
 names where the gateway takes its credentials from (ADR-024).
+
+### Measured
+
+**Against AWS, before the tag.** The manual AWS workflow ran three times for this
+release, and the first two failed for reasons worth having found: the fault
+tests could not reach a provider addressed by virtual host (#60), a condition
+AWS enforced read as refused (#62), and AWS keeps a different write than the
+gateway assumed (ADR-025). The third,
+[37133982130](https://github.com/LennardGeissler/blindbucket/actions/runs/37133982130),
+ran on the code this release ships and passed every step. Those steps were:
+the integration suite against S3 in eu-central-1; the KMS root-key tests; boto3
+and the AWS CLI through a gateway whose keyring KMS seals, before and after a
+restart; a reseal of that keyring from KMS to a passphrase and back, with an
+object written before it still read after; and, for the first time, a gateway
+that takes its upstream and KMS credentials from web identity. That gateway
+exchanged the job's GitHub OIDC token at STS where IRSA's would be, and passed
+a 40 MiB AWS CLI round trip.
 
 ### Fixed
 
@@ -1007,7 +1042,8 @@ figures and the methodology are in [bench/](bench/).
   of ten seconds, so the time is the provider's; why it behaves that way under
   this access pattern is not established.
 
-[Unreleased]: https://github.com/LennardGeissler/blindbucket/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/LennardGeissler/blindbucket/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/LennardGeissler/blindbucket/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/LennardGeissler/blindbucket/compare/v0.6.0...v1.0.0
 [0.6.0]: https://github.com/LennardGeissler/blindbucket/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/LennardGeissler/blindbucket/compare/v0.4.0...v0.5.0

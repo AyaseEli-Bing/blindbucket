@@ -1,9 +1,13 @@
 # Threat Model
 
-**Status:** Current as of `v1.0.0`, and of `migrate-names` and `reseal` since,
-which add no guarantee either: one moves objects whose names the provider has
-already seen, and §4 says what that leaves behind; the other changes what opens a
-keyring and not what is in it, and §5.5 says what that does not undo. `v1.0.0` changed no guarantee in it: it makes
+**Status:** Current as of `v1.1.0`, which adds no guarantee either. Its
+`migrate-names` moves objects whose names the provider has already seen, and §4
+says what that leaves behind; `reseal` changes what opens a keyring and not what
+is in it, and §5.5 says what that does not undo; and the AWS credential chain
+changes where the upstream and KMS credentials come from, not who may hold them
+(§1, [ADR-024](adr/ADR-024-aws-credentials-without-the-sdk.md)). §4 also names, since
+`v1.1.0`, every content header the provider sees, three of which it had left out since
+`v0.1.0`. `v1.0.0` changed no guarantee in it: it makes
 the existing ones a versioned promise ([ADR-021](adr/ADR-021-what-1.0-promises.md)),
 and its one fix lets the root-key credentials be referenced from the environment
 instead of written into the configuration file. `v0.6.0` added reporting and
