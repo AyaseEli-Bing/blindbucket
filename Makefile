@@ -193,6 +193,16 @@ demo: ## Record the terminal demo.
 demo-stop: ## Stop the demo services.
 	demo/setup.sh stop
 
+##@ Documentation
+
+# Every relative link in a tracked Markdown file, checked by file and by heading
+# anchor. External URLs are left alone on purpose: they fail for reasons the
+# change under test has nothing to do with, and a job that fails at random is a
+# job that gets ignored.
+.PHONY: mdlinks
+mdlinks: ## Check the relative links and anchors in the documentation.
+	$(GO) run ./test/mdlinks
+
 ##@ Release and maintenance
 
 # Validate the release configuration and build everything locally without
