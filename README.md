@@ -38,10 +38,10 @@
 
 > [!NOTE]
 > **Status: `v1.1.0` — stable, and measured against AWS.** Standard S3 clients round-trip
-> through the gateway, multipart included: AWS CLI, boto3, `mc` and rclone all
-> work, and a 5 GiB `aws s3 cp` across two instances comes back with an identical
-> SHA-256. Key rotation, server-side copy, a signed audit log, object-name
-> encryption, metrics and health endpoints are in, and the keyring can be
+> through the gateway, multipart included: AWS CLI, boto3, `mc`, rclone and
+> s5cmd all work, and a 5 GiB `aws s3 cp` across two instances comes back with
+> an identical SHA-256. Key rotation, server-side copy, a signed audit log,
+> object-name encryption, metrics and health endpoints are in, and the keyring can be
 > unsealed by Vault Transit or AWS KMS instead of a passphrase.
 >
 > **New in 1.1:** `migrate-names` moves a bucket written in the clear to

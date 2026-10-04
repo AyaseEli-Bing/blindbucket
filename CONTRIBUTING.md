@@ -23,7 +23,7 @@ In rough order of value to this project:
    reading is worth as much as a bug found by running.
 3. **A client measured rather than assumed.** Point another S3 client at the
    gateway, run it, and record what happened in
-   [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md). Three of the four clients
+   [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md). Three of the five clients
    documented there each found a real bug that no unit test would have.
 4. **Tests for code that only integration tests reach.** Several packages are
    covered only by tests that skip without a running MinIO, which means a plain
