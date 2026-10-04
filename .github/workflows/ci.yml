@@ -46,6 +46,19 @@ jobs:
       - name: Fail if go.mod or go.sum changed
         run: git diff --exit-code -- go.mod go.sum
 
+  # Forty Markdown files point at each other by file and by heading, and a
+  # renamed ADR or a reworded heading breaks those silently. Only relative links
+  # are checked: an external URL that fails is noise, and noise gets ignored.
+  mdlinks:
+    name: Markdown links
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make mdlinks
+
   # promtool's own tests replay invented series; the Go test in internal/obs is
   # what holds the rules to metrics the gateway actually exports.
   alerts:
