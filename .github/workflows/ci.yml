@@ -502,6 +502,19 @@ jobs:
 
           test "$(aws s3 ls s3://blindbucket-dev/ci/ | awk '{print $3}')" = "200000"
 
+          # A directory sync has to survive the round trip, both ways. These ran
+          # only when the job was already failing, and then without credentials or
+          # an endpoint, so they checked nothing at all.
+          aws s3 sync tree s3://blindbucket-dev/ci/sync/
+          aws s3 sync s3://blindbucket-dev/ci/sync/ tree-back
+          diff -r tree tree-back
+
+          # A range read through the AWS CLI, the client that asks for ranges the
+          # way the gateway answers them.
+          aws s3api get-object --bucket blindbucket-dev --key ci/payload.bin \
+            --range bytes=1000-1099 range.bin >/dev/null
+          test "$(stat -c%s range.bin)" = "100"
+
       # A presigned URL is the one credential the gateway serves that arrives
       # with no client behind it, so curl is the right tool: no SDK, no signing,
       # no AWS environment. `aws s3 presign` is a local computation, which is
@@ -587,6 +600,22 @@ jobs:
           aws s3 cp s3://blindbucket-dev/ci/big.bin after-gc.bin
           cmp big.bin after-gc.bin
 
+      # Deletes last, because the steps above still read ci/payload.bin: a
+      # presigned download is a GET, and gc reports the bucket it just walked.
+      # Moving these next to the other AWS CLI assertions would have made the
+      # presigned step download an object that is no longer there.
+      - name: The client can delete, recursively and one by one
+        env:
+          AWS_ACCESS_KEY_ID: CITESTKEY
+          AWS_SECRET_ACCESS_KEY: ci-test-secret-key
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ENDPOINT_URL: http://127.0.0.1:9000
+        run: |
+          set -euo pipefail
+          aws s3 rm s3://blindbucket-dev/ci/sync/ --recursive
+          aws s3 rm s3://blindbucket-dev/ci/payload.bin
+          ! aws s3 ls s3://blindbucket-dev/ci/payload.bin
+
       - name: Gateway logs on failure
         if: failure()
         run: |
@@ -594,17 +623,6 @@ jobs:
           echo "=== instance b ==="; tail -50 gateway-b.log || true
           echo "=== balancer ==="; docker logs lb 2>&1 | tail -30 || true
           echo "=== minio ==="; docker logs minio 2>&1 | tail -30 || true
-
-          aws s3 sync tree s3://blindbucket-dev/ci/sync/
-          aws s3 sync s3://blindbucket-dev/ci/sync/ tree-back
-          diff -r tree tree-back
-
-          aws s3api get-object --bucket blindbucket-dev --key ci/payload.bin \
-            --range bytes=1000-1099 range.bin >/dev/null
-          test "$(stat -c%s range.bin)" = "100"
-
-          aws s3 rm s3://blindbucket-dev/ci/sync/ --recursive
-          aws s3 rm s3://blindbucket-dev/ci/payload.bin
 
 
   vuln:
