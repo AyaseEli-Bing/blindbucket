@@ -29,6 +29,25 @@ func SaltFromHeader(raw []byte) ([SaltSize]byte, bool) {
 	return salt, true
 }
 
+// DecodeHeader validates and decodes a 32-byte segment header without any key
+// material.
+//
+// The fields it returns are what the header claims, not what has been verified:
+// the header only becomes authentic once a chunk sealed with it has been
+// authenticated, which is step 4 of docs/FORMAT.md section 5.2. A caller that
+// needs trust rather than reporting goes through NewDecryptReader.
+//
+// It exists so that `blindbucket inspect` reports the fields the decoder reads
+// instead of carrying a second copy of section 4.1's offsets, where a change to
+// one could silently disagree with the other.
+func DecodeHeader(b []byte) (SegmentParams, [SaltSize]byte, error) {
+	h, err := parseHeader(b)
+	if err != nil {
+		return SegmentParams{}, [SaltSize]byte{}, err
+	}
+	return h.params, h.salt, nil
+}
+
 // newHeader builds a header for p with a freshly generated salt.
 //
 // The salt is what separates one segment's subkey from every other segment's.
