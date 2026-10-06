@@ -190,6 +190,58 @@ func TestInspectReportsAMultipartSegment(t *testing.T) {
 	if strings.Contains(stdout, "key id") {
 		t.Errorf("a raw segment carries no envelope, so it cannot name a key:\n%s", stdout)
 	}
+	// A part is one segment of an object whose other segments may follow it in the
+	// same bytes, so the length says nothing about this part and the size is left
+	// unsaid rather than guessed at.
+	if got := line(t, stdout, "plaintext"); got != "not derived" {
+		t.Errorf("plaintext = %q, want not derived", got)
+	}
+	if !strings.Contains(stdout, "manifest") {
+		t.Errorf("the report should say where the part count lives:\n%s", stdout)
+	}
+}
+
+// Two parts of one object, concatenated the way the provider stores them, are the
+// input that makes the refusal above load-bearing: the arithmetic accepts the
+// length and returns a confident number 16 bytes too high. Without the multipart
+// guard this test prints 8208 and passes nothing.
+func TestInspectDoesNotDeriveASizeFromConcatenatedParts(t *testing.T) {
+	const (
+		log2C    = stream.MinLog2ChunkSize
+		partSize = 1 << log2C
+		parts    = 2
+	)
+	dek := make([]byte, stream.KeySize)
+	if _, err := rand.Read(dek); err != nil {
+		t.Fatalf("rand: %v", err)
+	}
+
+	var object bytes.Buffer
+	for part := 1; part <= parts; part++ {
+		segment := writeSegment(t,
+			stream.SegmentParams{Log2ChunkSize: log2C, Multipart: true, Index: uint32(part)},
+			bytes.Repeat([]byte{0x2b}, partSize))
+		object.Write(segment)
+	}
+
+	path := filepath.Join(t.TempDir(), "object.bin")
+	if err := os.WriteFile(path, object.Bytes(), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	stdout, _, err := runCLI(t, "inspect", path)
+	if err != nil {
+		t.Fatalf("a whole object is a legitimate thing to inspect: %v", err)
+	}
+	if got := line(t, stdout, "plaintext"); got != "not derived" {
+		t.Errorf("plaintext = %q, want not derived", got)
+	}
+	// The one number that is a fact about the input survives.
+	if got := line(t, stdout, "ciphertext"); got != fmt.Sprintf("%d bytes", object.Len()) {
+		t.Errorf("ciphertext = %q, want the %d bytes the input holds", got, object.Len())
+	}
+	if strings.Contains(stdout, fmt.Sprintf("%d bytes (derived)", parts*partSize)) {
+		t.Errorf("the object's true size should not be arrived at by accident:\n%s", stdout)
+	}
 }
 
 // Every rule of docs/FORMAT.md section 5.2 exists because the header is
@@ -548,11 +600,14 @@ func TestInspectRefusesMoreThanOneFile(t *testing.T) {
 	first := inspectFile(t, []byte("first"))
 	second := inspectFile(t, []byte("second and longer"))
 
-	_, _, err := runCLI(t, "inspect", first, second)
-	if err == nil {
-		t.Fatal("inspect accepted two files and reported only one of them")
+	stdout, stderr, err := runCLI(t, "inspect", first, second)
+	if !errors.Is(err, errUsage) {
+		t.Fatalf("a wrong argument count is a usage failure, so it must leave as one: %v", err)
 	}
-	if !strings.Contains(err.Error(), "inspect takes one file, got 2 arguments") {
-		t.Errorf("the error does not say what was wrong with the command line: %q", err)
+	if stdout != "" {
+		t.Errorf("a command line that was wrong reported a file anyway:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "inspect takes one file, got 2 arguments") {
+		t.Errorf("the message naming the mistake was lost on the way to the usage text: %q", stderr)
 	}
 }

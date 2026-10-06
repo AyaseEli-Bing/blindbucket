@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"golang.org/x/term"
 
@@ -20,6 +21,11 @@ import (
 // inspectMagicSize is the length of the marker that says which format the input
 // claims to be. Every magic in docs/FORMAT.md is four bytes.
 const inspectMagicSize = 4
+
+// inspectLabelWidth is the column the values of the listing start in. A note that
+// continues under the listing indents to the same column, so it reads as part of
+// the listing rather than as a paragraph dropped beneath it.
+const inspectLabelWidth = 13
 
 // runInspect reports the format fields of a blindbucket file or a raw segment
 // without decrypting it and without a keyring.
@@ -52,16 +58,26 @@ The sizes are arithmetic on the length. A length no encoder could produce is rep
 as a failure; a length that fits is not proof of integrity, because bytes appended to
 a ciphertext usually read as a sound segment of a different plaintext.
 
-The ciphertext line counts the segment alone, so a file's envelope is excluded from
-it. The file is read from stdin when the argument is absent or -.
+The ciphertext line counts from the segment header to the end of what was given, so a
+file's envelope is excluded from it. On a part that is the whole object's body rather
+than the part, and its plaintext size is reported as not derived: the part count lives
+in the manifest, not in the bytes.
+
+The file is read from stdin when the argument is absent or -.
 `)
 	}
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if fs.NArg() > 1 {
+		// errUsage rather than a plain error, because main gives a usage failure
+		// the conventional exit code 2 and gc, probe, migrate, reseal and rotate
+		// all leave a wrong argument count that way. The reason is printed first:
+		// main's errUsage branch prints the command list and drops the error text,
+		// and "you gave me two files" is the part the operator needed told.
+		_, _ = fmt.Fprintf(fs.Output(), "inspect takes one file, got %d arguments\n", fs.NArg())
 		fs.Usage()
-		return fmt.Errorf("inspect takes one file, got %d arguments", fs.NArg())
+		return errUsage
 	}
 
 	path := "-"
@@ -156,16 +172,40 @@ it. The file is read from stdin when the argument is absent or -.
 		[2]string{"ciphertext", fmt.Sprintf("%d bytes", sealed)},
 	)
 
-	// The derived size is last because it is the only field not stored, and the
-	// one that can fail: a length no encoder could produce means the input is
-	// truncated, extended, or written with a chunk size it does not declare.
-	plain, plainErr := stream.OpenedSize(sealed, params.Log2ChunkSize)
-	if plainErr == nil {
-		fields = append(fields, [2]string{"plaintext", fmt.Sprintf("%d bytes (derived)", plain)})
+	// The derived size is last because it is the only field not stored, and the one
+	// that can fail: a length no encoder could produce means the input is truncated,
+	// extended, or written with a chunk size it does not declare.
+	//
+	// A multipart header is not derived at all. A multipart object is its segments
+	// concatenated under one key (docs/FORMAT.md section 4), and the number of them
+	// is in the manifest rather than the body (section 10), so the length of several
+	// parts read as one segment yields a size wrong by a tag per extra part -- and
+	// yields it reproducibly: the two 4 KiB parts of one object derive as 8208 bytes
+	// of plaintext where the object holds 8192, and pass the check that exists to
+	// catch a forged length. A single-part input needs no such guard, because
+	// section 4 makes a single-part object exactly one segment.
+	var note string
+	var plainErr error
+	if params.Multipart {
+		fields = append(fields, [2]string{"plaintext", "not derived"})
+		note = indentNote("a part is stored concatenated with the object's other parts, and how\n" +
+			"many there are is in the manifest rather than in the body (docs/FORMAT.md\n" +
+			"sections 4 and 10). Reading this input's length as one segment would report\n" +
+			"a size wrong by a tag per part, so it is left unsaid rather than guessed.")
+	} else {
+		plain, err := stream.OpenedSize(sealed, params.Log2ChunkSize)
+		if err != nil {
+			plainErr = err
+		} else {
+			fields = append(fields, [2]string{"plaintext", fmt.Sprintf("%d bytes (derived)", plain)})
+		}
 	}
 
 	for _, f := range fields {
-		_, _ = fmt.Fprintf(os.Stdout, "%-13s %s\n", f[0], f[1])
+		_, _ = fmt.Fprintf(os.Stdout, "%-*s %s\n", inspectLabelWidth, f[0], f[1])
+	}
+	if note != "" {
+		_, _ = fmt.Fprintln(os.Stdout, note)
 	}
 
 	if plainErr != nil {
@@ -248,6 +288,13 @@ func countRemaining(ctx context.Context, src io.Reader) (int64, error) {
 			return 0, err
 		}
 	}
+}
+
+// indentNote aligns a note with the values of the listing it continues, so the
+// whole report reads as one block.
+func indentNote(text string) string {
+	pad := strings.Repeat(" ", inspectLabelWidth+1)
+	return pad + strings.ReplaceAll(text, "\n", "\n"+pad)
 }
 
 // formatName says which format the input turned out to be, by its marker.
