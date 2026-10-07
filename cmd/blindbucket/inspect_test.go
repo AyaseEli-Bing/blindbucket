@@ -611,3 +611,25 @@ func TestInspectRefusesMoreThanOneFile(t *testing.T) {
 		t.Errorf("the message naming the mistake was lost on the way to the usage text: %q", stderr)
 	}
 }
+
+// A terminal for stdin is the case where no bytes will ever arrive for the asking,
+// which is a wrong invocation rather than a failed one: it has to leave the way the
+// other wrong invocations leave, with the reason printed above the usage text rather
+// than in place of it. `stdinIsTerminal` exists because this cannot be reached by
+// lying about stdin -- under `go test` it is a pipe, as exit_test.go notes.
+func TestInspectRefusesATerminalForStdin(t *testing.T) {
+	restore := stdinIsTerminal
+	stdinIsTerminal = func() bool { return true }
+	t.Cleanup(func() { stdinIsTerminal = restore })
+
+	stdout, stderr, err := runCLI(t, "inspect")
+	if !errors.Is(err, errUsage) {
+		t.Fatalf("waiting for input that cannot come is a usage failure, so it must leave as one: %v", err)
+	}
+	if stdout != "" {
+		t.Errorf("a command that read nothing reported a file anyway:\n%s", stdout)
+	}
+	if !strings.Contains(stderr, "no file given and stdin is a terminal") {
+		t.Errorf("the message naming the mistake was lost on the way to the usage text: %q", stderr)
+	}
+}

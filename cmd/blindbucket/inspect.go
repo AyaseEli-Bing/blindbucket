@@ -59,9 +59,9 @@ as a failure; a length that fits is not proof of integrity, because bytes append
 a ciphertext usually read as a sound segment of a different plaintext.
 
 The ciphertext line counts from the segment header to the end of what was given, so a
-file's envelope is excluded from it. On a part that is the whole object's body rather
-than the part, and its plaintext size is reported as not derived: the part count lives
-in the manifest, not in the bytes.
+file's envelope is excluded from it. For a segment whose header calls it a part, the
+input may be the whole object's body rather than one part, so its plaintext size is
+reported as not derived: the part count lives in the manifest, not in the bytes.
 
 The file is read from stdin when the argument is absent or -.
 `)
@@ -84,8 +84,15 @@ The file is read from stdin when the argument is absent or -.
 	if fs.NArg() == 1 {
 		path = fs.Arg(0)
 	}
-	if path == "-" && term.IsTerminal(int(os.Stdin.Fd())) {
-		return errors.New("no file given and stdin is a terminal; pass a file or pipe it in")
+	if path == "-" && stdinIsTerminal() {
+		// errUsage, for the reason the second commit argued for the argument count:
+		// nothing was named and nothing can arrive, so this is a wrong invocation
+		// rather than a failed one, and it belongs with the others at exit 2. The
+		// reason is printed first because main's errUsage branch prints the command
+		// list and drops the error text.
+		_, _ = fmt.Fprintln(fs.Output(), "inspect: no file given and stdin is a terminal; pass a file or pipe it in")
+		fs.Usage()
+		return errUsage
 	}
 
 	src, closeSrc, err := openInput(path)
@@ -131,10 +138,11 @@ The file is read from stdin when the argument is absent or -.
 	if err != nil {
 		return inspectError(path, err)
 	}
-	params, salt, err := stream.DecodeHeader(raw)
+	seg, err := stream.DecodeHeader(raw)
 	if err != nil {
 		return inspectError(path, err)
 	}
+	params, salt := seg.Params, seg.Salt
 	// Section 9 of docs/FORMAT.md makes this more than a nicety: Decrypt asks the
 	// stream decoder for a single-part segment with index 0, so a file whose header
 	// disagrees with that is a file that will not open. Saying so here, before
@@ -163,8 +171,8 @@ The file is read from stdin when the argument is absent or -.
 			[2]string{"envelope", fmt.Sprintf("%d bytes", hdr.Size)})
 	}
 	fields = append(fields,
-		[2]string{"magic", string(stream.Magic[:])},
-		[2]string{"version", fmt.Sprintf("%d", stream.Version)},
+		[2]string{"magic", string(seg.Magic[:])},
+		[2]string{"version", fmt.Sprintf("%d", seg.Version)},
 		[2]string{"chunk size", fmt.Sprintf("%d (log2 = %d)", params.ChunkSize(), params.Log2ChunkSize)},
 		[2]string{"multipart", yesNo(params.Multipart)},
 		[2]string{"part index", fmt.Sprintf("%d", params.Index)},
@@ -218,6 +226,12 @@ The file is read from stdin when the argument is absent or -.
 	}
 	return nil
 }
+
+// stdinIsTerminal reports whether stdin is a terminal, which is the case in which
+// no bytes will ever arrive for the asking. It is a variable because a terminal
+// cannot be simulated under `go test`, where stdin is a pipe: without the seam, the
+// branch that refuses to sit and wait would be unreachable and so untested.
+var stdinIsTerminal = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) }
 
 // inspectError names the input in an error, since "-" is a path and stdin is what
 // the user actually gave.
